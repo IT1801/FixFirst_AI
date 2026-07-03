@@ -1,0 +1,95 @@
+services:
+  db:
+    image: postgres:16
+    container_name: fixfirst-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-fixfirst}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fixfirst}
+      POSTGRES_DB: ${POSTGRES_DB:-fixfirst}
+    ports:
+      - "${DB_PORT:-6543}:5432"
+    volumes:
+      - fixfirst_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-fixfirst}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - fixfirst-net
+
+  mlflow:
+    build:
+      context: ./docker
+      dockerfile: dockerfile.mlflow
+    container_name: fixfirst-mlflow
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      MLFLOW_BACKEND_STORE_URI: postgresql://${POSTGRES_USER:-fixfirst}:${POSTGRES_PASSWORD:-fixfirst}@db:5432/${POSTGRES_DB:-fixfirst}
+      MLFLOW_ARTIFACT_ROOT: /mlruns
+    ports:
+      - "5001:5000"
+    volumes:
+      - fixfirst_mlruns:/mlruns
+    command: >
+      mlflow server
+      --backend-store-uri postgresql://${POSTGRES_USER:-fixfirst}:${POSTGRES_PASSWORD:-fixfirst}@db:5432/${POSTGRES_DB:-fixfirst}
+      --default-artifact-root /mlruns
+      --host 0.0.0.0
+      --port 5000
+    networks:
+      - fixfirst-net
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/dockerfile.api
+    container_name: fixfirst-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      mlflow:
+        condition: service_started
+    env_file: .env
+    environment:
+      DB_HOST: db
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - fixfirst-net
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: docker/dockerfile.dashboard
+    container_name: fixfirst-dashboard
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DASHBOARD_API_BASE_URL: http://api:8000
+    ports:
+      - "8501:8501"
+    networks:
+      - fixfirst-net
+
+volumes:
+  fixfirst_pg_data:
+  fixfirst_mlruns:
+
+networks:
+  fixfirst-net:
+    driver: bridge

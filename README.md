@@ -179,13 +179,14 @@ make preprocess
 ```
 <sub>Raw: `PYTHONPATH=src python scripts/run_preprocessing.py`</sub>
 
-### 6. Bootstrap silver labels (costs LLM API credits — start with a limit)
+### 6. Bootstrap silver labels with zero-shot classification
 ```bash
+make install-training   # needed for torch + transformers
 make label LIMIT=10   # sanity check first
-make label             # full run
+make label BATCH_SIZE=8   # full run
 ```
 Then inspect `notebooks/03_silver_label_qa.ipynb` before trusting the labels.
-<sub>Raw: `PYTHONPATH=src python scripts/run_silver_labeling.py [--limit 10]`</sub>
+<sub>Raw: `PYTHONPATH=src python scripts/run_silver_labeling.py [--limit 10] [--batch-size 8] [--no-resume]`</sub>
 
 ### 7. Train the fine-tuned models
 ```bash

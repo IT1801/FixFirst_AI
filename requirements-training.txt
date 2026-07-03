@@ -1,0 +1,10 @@
+# Training-only dependencies — NOT required to run the API/dashboard/scoring
+# layers, only for scripts/train_aspect_category.py and its sentiment-model
+# counterpart. Kept separate from requirements.txt so the serving image
+# doesn't carry a multi-GB torch install it never uses.
+
+# Install with: pip install -r requirements-training.txt --break-system-packages
+
+torch==2.3.1
+transformers==4.42.3
+mlflow==2.14.1

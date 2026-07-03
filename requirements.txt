@@ -1,0 +1,16 @@
+python-dotenv
+SQLAlchemy
+psycopg2-binary
+fastapi
+uvicorn
+streamlit
+plotly
+requests
+groq
+
+pandas
+langdetect
+scikit-learn
+pyarrow
+
+-e .
