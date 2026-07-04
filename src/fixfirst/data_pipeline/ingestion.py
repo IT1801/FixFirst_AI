@@ -52,6 +52,7 @@ def _validate_raw(df: pd.DataFrame, config: AWAREIngestionConfig) -> None:
             config.category_column,
             config.term_column,
             config.sentiment_column,
+            config.rating_column,
         ]
 
         missing_columns = [column for column in expected_columns if column not in df.columns]
@@ -82,6 +83,7 @@ def transform_to_raw_reviews(df: pd.DataFrame, config: AWAREIngestionConfig) -> 
         sentiment_col = config.sentiment_column
         from_col = config.from_column
         to_col = config.to_column
+        rating_col = config.rating_column
 
         logging.info("Transforming AWARE rows into raw_reviews records")
 
@@ -96,7 +98,7 @@ def transform_to_raw_reviews(df: pd.DataFrame, config: AWAREIngestionConfig) -> 
         records: list[dict] = []
 
         for (app_name, domain, sentence), group in df.groupby(group_keys, dropna=False):
-            annotations = []
+            annotations: list[dict] = []
 
             for _, row in group.iterrows():
                 aspect = row[term_col]
@@ -116,15 +118,14 @@ def transform_to_raw_reviews(df: pd.DataFrame, config: AWAREIngestionConfig) -> 
                     annotation["to"] = None if pd.isna(row[to_col]) else int(row[to_col])
 
                 annotations.append(annotation)
-
+            rating = group.iloc[0][rating_col]
             records.append(
                 {
                     "id": uuid.uuid4(),
                     "source": SOURCE_AWARE,
                     "app_id": str(app_name),
                     "review_text": str(sentence),
-                    "rating": None,
-                    "review_date": None,
+                    "rating": None if pd.isna(rating) else int(rating),
                     "raw_metadata": {"domain": str(domain), RAW_METADATA_AWARE: annotations},
                 }
             )
