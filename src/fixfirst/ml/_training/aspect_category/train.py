@@ -47,9 +47,6 @@ class AspectCategoryTrainer(BaseModelTrainer):
             )
             from peft import get_peft_model, LoraConfig, TaskType
 
-            from fixfirst.core._db.base import get_db
-            from fixfirst.core._db.models import FeatureMaster, ModelTask
-
             # --- CUSTOM TRAINER WITH FOCAL LOSS ---
             class FocalLoss(nn.Module):
                 def __init__(self, pos_weight=None, gamma=2.0):
@@ -87,13 +84,21 @@ class AspectCategoryTrainer(BaseModelTrainer):
                     return (loss, outputs) if return_outputs else loss
             # ----------------------------------------
 
-            with get_db() as db:
-                taxonomy = db.query(FeatureMaster.feature_key).filter(FeatureMaster.is_active.is_(True)).all()
-                feature_keys = [item.feature_key for item in taxonomy]
+            labels_df, progress_df = self._load_inputs()
+
+            label_col = "feature_key"
+            if label_col not in labels_df.columns:
+                possible_cols = [c for c in labels_df.columns if "feature" in c.lower() or "label" in c.lower() or "category" in c.lower()]
+                if possible_cols:
+                    label_col = possible_cols[0]
+                else:
+                    non_id_cols = [c for c in labels_df.columns if c != "review_id"]
+                    label_col = non_id_cols[0] if non_id_cols else labels_df.columns[-1]
+                labels_df = labels_df.rename(columns={label_col: "feature_key"})
+
+            feature_keys = sorted(labels_df["feature_key"].dropna().unique().tolist())
             label_index = build_label_index(feature_keys)
             label_names = [name for name, _ in sorted(label_index.items(), key=lambda item: item[1])]
-
-            labels_df, progress_df = self._load_inputs()
             if self.limit is not None:
                 selected_ids = progress_df["review_id"].drop_duplicates().head(self.limit)
                 progress_df = progress_df[progress_df["review_id"].isin(selected_ids)]
@@ -230,7 +235,7 @@ class AspectCategoryTrainer(BaseModelTrainer):
                         "AspectCategoryTrainer: model was saved locally but "
                         f"MLflow artifact upload failed (non-fatal): {exc}"
                     )
-                self._register_model_run(run.info.run_id, ModelTask.aspect_category, final_metrics)
+                logging.info("Skipping model registration as per file-based training requirement.")
 
             logging.info(f"AspectCategoryTrainer: complete. Run ID: {run.info.run_id}")
             return final_metrics
