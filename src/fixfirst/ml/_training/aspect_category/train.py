@@ -96,8 +96,16 @@ class AspectCategoryTrainer(BaseModelTrainer):
                     label_col = non_id_cols[0] if non_id_cols else labels_df.columns[-1]
                 labels_df = labels_df.rename(columns={label_col: "feature_key"})
 
+            if self.limit is not None:
+                selected_ids = progress_df["review_id"].drop_duplicates().head(self.limit)
+                progress_df = progress_df[progress_df["review_id"].isin(selected_ids)]
+                labels_df = labels_df[labels_df["review_id"].isin(selected_ids)]
+
+            labeled_ids = progress_df[progress_df["status"] == "labeled"]["review_id"]
+            valid_labels_df = labels_df[labels_df["review_id"].isin(labeled_ids)]
+
             MIN_SUPPORT = 20
-            label_counts = labels_df["feature_key"].value_counts()
+            label_counts = valid_labels_df["feature_key"].value_counts()
             valid_features = label_counts[label_counts >= MIN_SUPPORT].index.tolist()
             if not valid_features:
                 raise FixFirstException(f"No categories have at least {MIN_SUPPORT} examples.", sys)
@@ -105,10 +113,6 @@ class AspectCategoryTrainer(BaseModelTrainer):
             feature_keys = sorted(valid_features)
             label_index = build_label_index(feature_keys)
             label_names = [name for name, _ in sorted(label_index.items(), key=lambda item: item[1])]
-            if self.limit is not None:
-                selected_ids = progress_df["review_id"].drop_duplicates().head(self.limit)
-                progress_df = progress_df[progress_df["review_id"].isin(selected_ids)]
-                labels_df = labels_df[labels_df["review_id"].isin(selected_ids)]
 
             examples_df, pos_weights = build_category_examples(labels_df, progress_df, feature_keys)
             
