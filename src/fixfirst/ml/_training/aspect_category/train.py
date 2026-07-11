@@ -47,22 +47,7 @@ class AspectCategoryTrainer(BaseModelTrainer):
             )
             from peft import get_peft_model, LoraConfig, TaskType
 
-            # --- CUSTOM TRAINER WITH FOCAL LOSS ---
-            class FocalLoss(nn.Module):
-                def __init__(self, pos_weight=None, gamma=2.0):
-                    super().__init__()
-                    self.pos_weight = pos_weight
-                    self.gamma = gamma
-
-                def forward(self, logits, targets):
-                    p = torch.sigmoid(logits)
-                    ce_loss = nn.functional.binary_cross_entropy_with_logits(
-                        logits, targets, reduction="none", pos_weight=self.pos_weight
-                    )
-                    p_t = p * targets + (1 - p) * (1 - targets)
-                    loss = ce_loss * ((1 - p_t) ** self.gamma)
-                    return loss.mean()
-
+            # --- CUSTOM TRAINER WITH STANDARD BCE LOSS ---
             class WeightedTrainer(Trainer):
                 def __init__(self, *args, pos_weights_tensor=None, **kwargs):
                     super().__init__(*args, **kwargs)
@@ -76,7 +61,7 @@ class AspectCategoryTrainer(BaseModelTrainer):
                     if self.pos_weights_tensor is not None:
                         self.pos_weights_tensor = self.pos_weights_tensor.to(logits.device)
                         
-                    loss_fct = FocalLoss(pos_weight=self.pos_weights_tensor)
+                    loss_fct = nn.BCEWithLogitsLoss(pos_weight=self.pos_weights_tensor)
                     loss = loss_fct(
                         logits.view(-1, self.model.config.num_labels), 
                         labels.view(-1, self.model.config.num_labels)
