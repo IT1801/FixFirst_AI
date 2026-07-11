@@ -27,10 +27,9 @@ flowchart LR
         C --> D[train / val / test split]
     end
 
-    subgraph "Label Bootstrapping (Phase 3)"
-        D --> E[LLM silver labeling]
-        E --> F[QA notebook]
-        F --> G[(silver_labels)]
+    subgraph "Label Extraction (Phase 3)"
+        D --> E[extract ground-truth annotations]
+        E --> G[(extracted_labels)]
     end
 
     subgraph "Fine-Tuning (Phase 4)"
@@ -122,15 +121,10 @@ fixfirst-ai/
 ├── requirements-training.txt   # torch + transformers, training-only
 ├── scripts/                    # CLI entrypoints for every pipeline stage
 ├── src/fixfirst/
-│   ├── config/                 # Settings (.env-driven)
-│   ├── db/                     # SQLAlchemy models + session mgmt
-│   ├── ingestion/               # AWARE dataset loader
-│   ├── preprocessing/          # Clean, dedup, language filter, split
-│   ├── labeling/                # LLM silver-labeling (Phase 3)
-│   ├── models/                  # Fine-tuned classifier training (Phase 4)
-│   ├── evaluation/               # Gold-label eval vs AWARE annotations
-│   ├── inference/                # Hybrid confidence-gated routing (Phase 5)
-│   ├── scoring/                  # Criticality score computation (Phase 6)
+│   ├── core/                   # Settings, database sessions, and ORM models
+│   ├── data_pipeline/          # Ingestion, cleaning, filtering, and splitting
+│   ├── ml/                     # Labeling, training, evaluation, and inference
+│   ├── business/               # Criticality score computation
 │   ├── orchestration/            # Prefect flow
 │   ├── api/                      # FastAPI serving layer
 │   └── dashboard/                # Streamlit frontend
@@ -167,7 +161,7 @@ make bootstrap
 <sub>Raw: `PYTHONPATH=src python scripts/init_db.py` then `scripts/seed_features.py`</sub>
 
 ### 4. Ingest data
-Download the [AWARE dataset](https://github.com) and verify its column names against `AWARE_COLUMN_MAP` in `src/fixfirst/ingestion/aware_loader.py` before running:
+Download the [AWARE dataset](https://github.com) and verify its column names against `AWARE_COLUMN_MAP` in `src/fixfirst/data_pipeline/ingestion.py` before running:
 ```bash
 make ingest CSV=data/raw/aware_reviews.csv
 ```
@@ -179,14 +173,12 @@ make preprocess
 ```
 <sub>Raw: `PYTHONPATH=src python scripts/run_preprocessing.py`</sub>
 
-### 6. Bootstrap silver labels with zero-shot classification
+### 6. Extract ground-truth labels
 ```bash
-make install-training   # needed for torch + transformers
 make label LIMIT=10   # sanity check first
 make label BATCH_SIZE=8   # full run
 ```
-Then inspect `notebooks/03_silver_label_qa.ipynb` before trusting the labels.
-<sub>Raw: `PYTHONPATH=src python scripts/run_silver_labeling.py [--limit 10] [--batch-size 8] [--no-resume]`</sub>
+<sub>Raw: `PYTHONPATH=src python scripts/extract_gold_labels.py [--limit 10] [--batch-size 8]`</sub>
 
 ### 7. Train the fine-tuned models
 ```bash
@@ -199,7 +191,7 @@ make train-sentiment
 <sub>Raw: `pip install -r requirements-training.txt --break-system-packages` then `PYTHONPATH=src python scripts/train_aspect_category.py` / `train_aspect_sentiment.py`</sub>
 
 ### 8. Evaluate against AWARE gold labels
-Verify `AWARE_CATEGORY_MAP` in `src/fixfirst/evaluation/category_mapping.py` against your actual AWARE category values first.
+Verify `AWARE_CATEGORY_MAP` in `src/fixfirst/ml/_evaluation/category_mapping.py` against your actual AWARE category values first.
 ```bash
 make eval
 ```
