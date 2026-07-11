@@ -191,8 +191,13 @@ class AspectCategoryTrainer(BaseModelTrainer):
                 pos_weights_tensor=pos_weights_tensor,
             )
 
-            mlflow.set_tracking_uri(self.settings.mlflow_tracking_uri)
-            mlflow.set_experiment(self.settings.mlflow_experiment_name)
+            try:
+                mlflow.set_tracking_uri(self.settings.mlflow_tracking_uri)
+                mlflow.set_experiment(self.settings.mlflow_experiment_name)
+            except Exception as exc:
+                logging.warning(f"Failed to connect to MLflow server: {exc}. Falling back to local file tracking.")
+                mlflow.set_tracking_uri("file:./mlruns")
+                mlflow.set_experiment(self.settings.mlflow_experiment_name)
             with mlflow.start_run(run_name="aspect_category_classifier") as run:
                 mlflow.log_params(
                     {
