@@ -43,9 +43,6 @@ class AspectSentimentTrainer(BaseModelTrainer):
         )
         from peft import get_peft_model, LoraConfig, TaskType
 
-        from fixfirst.core._db.base import get_db
-        from fixfirst.core._db.models import FeatureMaster, ModelTask
-
         # --- CUSTOM TRAINER FOR WEIGHTED CROSS ENTROPY LOSS ---
         class WeightedSentimentTrainer(Trainer):
             def __init__(self, *args, class_weights_tensor=None, **kwargs):
@@ -72,11 +69,21 @@ class AspectSentimentTrainer(BaseModelTrainer):
         # ------------------------------------------------------
 
         try:
-            with get_db() as db:
-                taxonomy = db.query(FeatureMaster.feature_key, FeatureMaster.display_name).filter(FeatureMaster.is_active.is_(True)).all()
-                feature_display_names = {t.feature_key: t.display_name for t in taxonomy}
-
             labels_df = self._load_inputs()
+            
+            label_col = "feature_key"
+            if label_col not in labels_df.columns:
+                possible_cols = [c for c in labels_df.columns if "feature" in c.lower() or "label" in c.lower() or "category" in c.lower()]
+                if possible_cols:
+                    label_col = possible_cols[0]
+                else:
+                    non_id_cols = [c for c in labels_df.columns if c != "review_id"]
+                    label_col = non_id_cols[0] if non_id_cols else labels_df.columns[-1]
+                labels_df = labels_df.rename(columns={label_col: "feature_key"})
+                
+            feature_keys = labels_df["feature_key"].dropna().unique().tolist()
+            feature_display_names = {k: k.replace("_", " ").title() for k in feature_keys}
+
             if self.limit:
                 labels_df = labels_df.head(self.limit)
 
@@ -166,8 +173,14 @@ class AspectSentimentTrainer(BaseModelTrainer):
                 class_weights_tensor=class_weights_tensor,
             )
 
-            mlflow.set_tracking_uri(self.settings.mlflow_tracking_uri)
-            mlflow.set_experiment(self.settings.mlflow_experiment_name)
+            try:
+                mlflow.set_tracking_uri(self.settings.mlflow_tracking_uri)
+                mlflow.set_experiment(self.settings.mlflow_experiment_name)
+            except Exception as exc:
+                logging.warning(f"Failed to connect to MLflow server: {exc}. Falling back to local file tracking.")
+                os.environ["MLFLOW_TRACKING_URI"] = "file:./mlruns"
+                mlflow.set_tracking_uri("file:./mlruns")
+                mlflow.set_experiment(self.settings.mlflow_experiment_name)
 
             with mlflow.start_run(run_name="aspect_sentiment_classifier") as run:
                 mlflow.log_params(
@@ -214,7 +227,7 @@ class AspectSentimentTrainer(BaseModelTrainer):
                         f"MLflow artifact upload failed (non-fatal): {e}"
                     )
 
-                self._register_model_run(run.info.run_id, ModelTask.aspect_sentiment, final_metrics)
+                logging.info("Skipping model registration as per file-based training requirement.")
 
                 logging.info(f"AspectSentimentTrainer: complete. Run ID: {run.info.run_id}")
                 logging.info(f"Final metrics: {final_metrics}")
