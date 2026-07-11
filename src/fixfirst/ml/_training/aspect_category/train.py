@@ -87,8 +87,8 @@ class AspectCategoryTrainer(BaseModelTrainer):
             # ----------------------------------------
 
             with get_db() as db:
-                taxonomy = db.query(FeatureMaster).filter(FeatureMaster.is_active.is_(True)).all()
-            feature_keys = [item.feature_key for item in taxonomy]
+                taxonomy = db.query(FeatureMaster.feature_key).filter(FeatureMaster.is_active.is_(True)).all()
+                feature_keys = [item.feature_key for item in taxonomy]
             label_index = build_label_index(feature_keys)
             label_names = [name for name, _ in sorted(label_index.items(), key=lambda item: item[1])]
 

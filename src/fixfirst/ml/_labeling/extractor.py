@@ -30,11 +30,11 @@ class GoldLabelExtractor:
             from fixfirst.core._db.base import get_db
             from fixfirst.core._db.models import FeatureMaster
             with get_db() as db:
-                taxonomy = db.query(FeatureMaster).filter(FeatureMaster.is_active.is_(True)).all()
-            feature_names = {t.feature_key: t.display_name for t in taxonomy}
+                taxonomy = db.query(FeatureMaster.feature_key, FeatureMaster.display_name).filter(FeatureMaster.is_active.is_(True)).all()
+                feature_names = {row.feature_key: row.display_name for row in taxonomy}
 
             records = []
-            valid_sentiments = {"Positive", "Negative", "Neutral"}
+            valid_sentiments = {"positive", "negative", "neutral"}
 
             for _, row in df.iterrows():
                 metadata = row.get("raw_metadata", {})
@@ -44,11 +44,16 @@ class GoldLabelExtractor:
                     cat = ann.get("aspect_category")
                     pol = ann.get("polarity")
 
-                    if cat in feature_names and pol in valid_sentiments:
+                    if isinstance(pol, str):
+                        pol_lower = pol.lower()
+                    else:
+                        continue
+
+                    if cat in feature_names and pol_lower in valid_sentiments:
                         records.append({
                             "review_id": row["id"],
                             "feature_key": cat,
-                            "sentiment": pol,
+                            "sentiment": pol_lower,
                             "confidence": 1.0,
                             "source": "gold",
                             "review_text": row["review_text"],
@@ -56,12 +61,11 @@ class GoldLabelExtractor:
 
             labels_df = pd.DataFrame(records)
             if not labels_df.empty:
-                # We need extracted_labels.parquet (the aspects) and extracted_labeling_progress.parquet (just review IDs)
-                # extracted_labels.parquet doesn't need review_text, just review_id, feature_key, sentiment, confidence, source
-                progress_df = pd.DataFrame({"review_id": labels_df["review_id"].unique()})
+                progress_df = labels_df[["review_id", "review_text"]].drop_duplicates().copy()
+                progress_df["status"] = "labeled"
             else:
                 labels_df = pd.DataFrame(columns=["review_id", "feature_key", "sentiment", "confidence", "source", "review_text"])
-                progress_df = pd.DataFrame(columns=["review_id"])
+                progress_df = pd.DataFrame(columns=["review_id", "review_text", "status"])
 
             out_dir = self.settings.resolve_path(self.settings.data_extracted_labels_dir)
             out_dir.mkdir(parents=True, exist_ok=True)

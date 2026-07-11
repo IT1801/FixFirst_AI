@@ -72,8 +72,8 @@ class AspectSentimentTrainer(BaseModelTrainer):
 
         try:
             with get_db() as db:
-                taxonomy = db.query(FeatureMaster).filter(FeatureMaster.is_active.is_(True)).all()
-            feature_display_names = {t.feature_key: t.display_name for t in taxonomy}
+                taxonomy = db.query(FeatureMaster.feature_key, FeatureMaster.display_name).filter(FeatureMaster.is_active.is_(True)).all()
+                feature_display_names = {t.feature_key: t.display_name for t in taxonomy}
 
             labels_df = self._load_inputs()
             if self.limit:
