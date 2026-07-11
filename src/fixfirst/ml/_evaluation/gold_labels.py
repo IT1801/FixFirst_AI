@@ -121,6 +121,9 @@ def extract_gold_sentiment_pairs(test_df: pd.DataFrame, feature_display_names: D
                     continue
 
                 normalized_sentiment = str(sentiment).strip().lower()
+                if normalized_sentiment in {"n/a", "na", "none"}:
+                    normalized_sentiment = "neutral"
+                    
                 if normalized_sentiment not in {"negative", "neutral", "positive"}:
                     invalid_sentiments.add(normalized_sentiment)
                     continue

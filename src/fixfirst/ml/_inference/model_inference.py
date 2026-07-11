@@ -70,13 +70,11 @@ def _load_sentiment_model():
         raise FixFirstException(e, sys)
 
 
-def predict_category_probs(review_text: str) -> Tuple[np.ndarray, List[str]]:
+def predict_category_probs(review_text: str) -> Tuple[np.ndarray, List[str], float]:
     """
-    Returns (probs, label_names): probs is shape (n_labels,) sigmoid
-    outputs in [0, 1], label_names[i] corresponds to probs[i] (ordering
-    comes from the model's saved label_index metadata, not re-derived —
-    this guards against a taxonomy change after training silently
-    misaligning predictions).
+    Returns (probs, label_names, threshold): probs is shape (n_labels,) sigmoid
+    outputs in [0, 1], label_names[i] corresponds to probs[i], threshold is the
+    dynamically tuned optimal threshold from training (defaults to 0.5).
     """
     import torch
 
@@ -84,6 +82,7 @@ def predict_category_probs(review_text: str) -> Tuple[np.ndarray, List[str]]:
         model, tokenizer, meta = _load_category_model()
         label_index: Dict[str, int] = meta["label_index"]
         label_names = [k for k, _ in sorted(label_index.items(), key=lambda kv: kv[1])]
+        threshold = meta.get("threshold", 0.5)
 
         with torch.no_grad():
             encoded = tokenizer(
@@ -92,7 +91,7 @@ def predict_category_probs(review_text: str) -> Tuple[np.ndarray, List[str]]:
             logits = model(**encoded).logits.cpu().numpy()[0]
 
         probs = sigmoid(logits)
-        return probs, label_names
+        return probs, label_names, threshold
     except Exception as e:
         raise FixFirstException(e, sys)
 

@@ -1,15 +1,10 @@
-"""
-Pydantic response schemas for the FixFirst AI API.
+"""Pydantic response schemas for the FixFirst AI API."""
 
-Separated from queries.py/routes so response shape is defined once and
-reused across all route handlers — no endpoint hand-builds its own dict.
-"""
-
-from datetime import date, datetime
+from datetime import date
 from typing import List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class FeatureOut(BaseModel):
@@ -40,7 +35,7 @@ class ReviewOut(BaseModel):
     review_text: str
     rating: Optional[int] = None
     review_date: Optional[date] = None
-    aspects: List[ReviewAspectOut] = []
+    aspects: List[ReviewAspectOut] = Field(default_factory=list)
 
 
 class PaginatedReviews(BaseModel):

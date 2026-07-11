@@ -151,12 +151,17 @@ def report_mapping_coverage(raw_categories: Set[str]) -> None:
     """Logs how many distinct AWARE categories in the dataset are mapped vs unmapped."""
     try:
         mapped = {c for c in raw_categories if map_aware_category(c) is not None}
-        unmapped = raw_categories - mapped
+        # Categories explicitly mapped to None (ignored)
+        ignored = {c for c in raw_categories if str(c).strip().lower() in AWARE_CATEGORY_MAP and AWARE_CATEGORY_MAP[str(c).strip().lower()] is None}
+        unmapped = raw_categories - mapped - ignored
         total = len(raw_categories)
 
+        if unmapped:
+            logging.warning(f"report_mapping_coverage: Found {len(unmapped)} completely unmapped categories: {sorted(unmapped)}")
+            
         logging.info(
             f"report_mapping_coverage: {len(mapped)}/{total} distinct AWARE categories mapped "
-            f"to features_master. Unmapped: {sorted(unmapped) if unmapped else 'none'}"
+            f"to features_master. Ignored: {sorted(ignored) if ignored else 'none'}."
         )
     except Exception as e:
         raise FixFirstException(e, sys)

@@ -12,7 +12,7 @@ services:
     volumes:
       - fixfirst_pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-fixfirst}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-fixfirst} -d ${POSTGRES_DB:-fixfirst}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -29,7 +29,7 @@ services:
       db:
         condition: service_healthy
     environment:
-      MLFLOW_BACKEND_STORE_URI: postgresql://${POSTGRES_USER:-fixfirst}:${POSTGRES_PASSWORD:-fixfirst}@db:5432/${POSTGRES_DB:-fixfirst}
+      MLFLOW_BACKEND_STORE_URI: postgresql://${POSTGRES_USER:-fixfirst}:${POSTGRES_PASSWORD_URLENCODED:-fixfirst}@db:5432/${POSTGRES_DB:-fixfirst}
       MLFLOW_ARTIFACT_ROOT: /mlruns
     ports:
       - "5001:5000"
@@ -37,8 +37,10 @@ services:
       - fixfirst_mlruns:/mlruns
     command: >
       mlflow server
-      --backend-store-uri postgresql://${POSTGRES_USER:-fixfirst}:${POSTGRES_PASSWORD:-fixfirst}@db:5432/${POSTGRES_DB:-fixfirst}
-      --default-artifact-root /mlruns
+      --backend-store-uri postgresql://${POSTGRES_USER:-fixfirst}:${POSTGRES_PASSWORD_URLENCODED:-fixfirst}@db:5432/${POSTGRES_DB:-fixfirst}
+      --serve-artifacts
+      --artifacts-destination /mlruns
+      --default-artifact-root mlflow-artifacts:/
       --host 0.0.0.0
       --port 5000
     networks:
@@ -58,6 +60,11 @@ services:
     env_file: .env
     environment:
       DB_HOST: db
+      DB_PORT: ${DB_PORT:-5432}
+      DB_USER: ${POSTGRES_USER:-fixfirst}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-fixfirst}
+      DB_NAME: ${POSTGRES_DB:-fixfirst}
+      MLFLOW_TRACKING_URI: http://mlflow:5000
     ports:
       - "8000:8000"
     healthcheck:

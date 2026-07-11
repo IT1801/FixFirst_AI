@@ -18,7 +18,7 @@ import sys
 
 from fixfirst.exceptions.exception import FixFirstException
 from fixfirst.logging.logger import logging
-from fixfirst.orchestration.flow import fixfirst_pipeline_flow
+from fixfirst.orchestration.flows import fixfirst_pipeline_flow
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run the full FixFirst AI pipeline flow.")

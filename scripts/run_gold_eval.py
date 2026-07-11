@@ -11,7 +11,7 @@ Requires:
     (scripts/train_aspect_category.py, scripts/train_aspect_sentiment.py)
 
 BEFORE RUNNING: inspect actual AWARE aspect_category values and verify/
-edit src/fixfirst/evaluation/category_mapping.py — an incomplete mapping
+edit src/fixfirst/ml/_evaluation/category_mapping.py — an incomplete mapping
 silently shrinks the gold eval set rather than crashing. Check the
 "report_mapping_coverage" log line printed on each run.
 """
@@ -20,14 +20,21 @@ import json
 import sys
 
 from fixfirst.exceptions.exception import FixFirstException
-from fixfirst.evaluation.gold_eval import run_gold_evaluation
+from fixfirst.ml._evaluation.gold_eval import GoldEvaluator
 from fixfirst.logging.logger import logging
 
-if __name__ == "__main__":
+
+def main() -> int:
+    """Run gold evaluation."""
     try:
-        results = run_gold_evaluation()
+        evaluator = GoldEvaluator()
+        metrics = evaluator.evaluate()
         logging.info("Gold evaluation complete.")
-        logging.info(json.dumps(results, indent=2))
-    except FixFirstException as e:
-        logging.error(str(e))
-        sys.exit(1)
+        return 0
+    except FixFirstException as exc:
+        logging.error(str(exc))
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

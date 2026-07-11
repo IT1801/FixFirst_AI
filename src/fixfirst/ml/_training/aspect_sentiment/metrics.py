@@ -25,8 +25,12 @@ def compute_sentiment_metrics(logits: np.ndarray, true_labels: np.ndarray) -> Di
         preds = np.argmax(logits, axis=-1)
 
         accuracy = accuracy_score(true_labels, preds)
+        labels_to_eval = [i for i in range(len(SENTIMENT_LABELS)) if np.sum(true_labels == i) > 0]
+        if not labels_to_eval:
+            labels_to_eval = list(range(len(SENTIMENT_LABELS)))
+
         precision_macro, recall_macro, f1_macro, _ = precision_recall_fscore_support(
-            true_labels, preds, average="macro", zero_division=0
+            true_labels, preds, average="macro", zero_division=0, labels=labels_to_eval
         )
 
         metrics = {

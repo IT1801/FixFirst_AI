@@ -1,0 +1,94 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fixfirst-ai"
+version = "0.1.0"
+description = "Aspect-based sentiment analysis for prioritizing product fixes from user reviews."
+readme = "README.md"
+requires-python = ">=3.10,<3.13"
+keywords = [
+    "aspect-based-sentiment-analysis",
+    "machine-learning",
+    "product-analytics",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "fastapi>=0.110,<1",
+    "groq>=0.9,<1",
+    "langdetect>=1.0.9,<2",
+    "pandas>=2.0,<3",
+    "plotly>=5.20,<7",
+    "psycopg2-binary>=2.9,<3",
+    "pyarrow>=15,<20",
+    "python-dotenv>=1.0,<2",
+    "requests>=2.31,<3",
+    "scikit-learn>=1.3,<2",
+    "SQLAlchemy>=2.0,<3",
+    "streamlit>=1.32,<2",
+    "uvicorn[standard]>=0.27,<1",
+]
+
+[project.optional-dependencies]
+training = [
+    "accelerate>=0.31,<1",
+    "mlflow==2.14.1",
+    "numpy>=1.26,<2.0",
+    "scipy>=1.11.4,<1.14",
+    "setuptools>=69,<81",
+    "torch==2.3.1",
+    "transformers==4.42.3",
+]
+llm = [
+    "anthropic>=0.30,<1",
+    "openai>=1.30,<2",
+]
+orchestration = [
+    "prefect>=2.16,<3",
+]
+dev = [
+    "pytest>=8,<9",
+    "pytest-cov>=5,<7",
+    "ruff>=0.5,<1",
+]
+all = [
+    "accelerate>=0.31,<1",
+    "anthropic>=0.30,<1",
+    "mlflow==2.14.1",
+    "numpy>=1.26,<2.0",
+    "openai>=1.30,<2",
+    "prefect>=2.16,<3",
+    "scipy>=1.11.4,<1.14",
+    "setuptools>=69,<81",
+    "torch==2.3.1",
+    "transformers==4.42.3",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["fixfirst*"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+src = ["src", "scripts", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/fixfirst/ml/_training/aspect_category/train.py" = ["E402"]
+"src/fixfirst/ml/_training/aspect_sentiment/train.py" = ["E402"]

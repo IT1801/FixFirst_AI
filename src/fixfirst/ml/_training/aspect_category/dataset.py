@@ -22,7 +22,7 @@ def build_category_examples(
     try:
         if progress_df.empty:
             raise FixFirstException(
-                "Silver-label progress is empty — run `make label` before training.", sys
+                "Extracted-label progress is empty — run `make label` before training.", sys
             )
 
         label_index = build_label_index(feature_keys)

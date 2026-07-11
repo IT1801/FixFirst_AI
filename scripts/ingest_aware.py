@@ -1,29 +1,30 @@
-"""
-CLI entrypoint to ingest an AWARE CSV file into raw_reviews.
-
-Usage:
-    PYTHONPATH=src python scripts/ingest_aware.py --csv data/raw/aware_reviews.csv
-
-Requires the `db` service to be running and the schema already created
-(see scripts/init_db.py).
-"""
+"""CLI entrypoint to ingest an AWARE CSV file into raw_reviews."""
 
 import argparse
 import sys
 
+from fixfirst.data_pipeline.ingestion import AWAREIngestor
 from fixfirst.exceptions.exception import FixFirstException
-from fixfirst.ingestion.aware_loader import ingest_aware_csv
 from fixfirst.logging.logger import logging
 
-if __name__ == "__main__":
+
+def main() -> int:
+    """Run the AWARE ingestion CLI."""
     parser = argparse.ArgumentParser(description="Ingest AWARE dataset CSV into raw_reviews.")
     parser.add_argument("--csv", required=True, help="Path to the AWARE CSV file")
     parser.add_argument("--batch-size", type=int, default=500, help="Insert batch size")
     args = parser.parse_args()
 
     try:
-        count = ingest_aware_csv(args.csv, batch_size=args.batch_size)
+        ingestor = AWAREIngestor(csv_path=args.csv)
+        # Using the wrapper property directly from the parsed args isn't strictly necessary since we can just use the config
+        count = ingestor.load(ingestor.transform(ingestor.extract()), batch_size=args.batch_size)
         logging.info(f"Successfully ingested {count} reviews from {args.csv}")
-    except FixFirstException as e:
-        logging.error(str(e))
-        sys.exit(1)
+        return 0
+    except FixFirstException as exc:
+        logging.error(str(exc))
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

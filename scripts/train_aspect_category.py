@@ -23,16 +23,24 @@ import sys
 
 from fixfirst.exceptions.exception import FixFirstException
 from fixfirst.logging.logger import logging
-from fixfirst.models.aspect_category.train import train_aspect_category_model
+from fixfirst.ml._training.aspect_category.train import AspectCategoryTrainer
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train the aspect category multi-label classifier.")
-    parser.add_argument("--limit", type=int, default=None, help="Only use the first N attempted reviews (smoke test)")
+
+def main() -> int:
+    """Run aspect category training."""
+    parser = argparse.ArgumentParser(description="Train multi-label category classifier.")
+    parser.add_argument("--limit", type=int, default=None, help="Max reviews to train on")
     args = parser.parse_args()
 
     try:
-        metrics = train_aspect_category_model(limit=args.limit)
-        logging.info(f"Training complete. Final validation metrics: {metrics}")
-    except FixFirstException as e:
-        logging.error(str(e))
-        sys.exit(1)
+        trainer = AspectCategoryTrainer(limit=args.limit)
+        metrics = trainer.train()
+        logging.info(f"Final metrics: {metrics}")
+        return 0
+    except FixFirstException as exc:
+        logging.error(str(exc))
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

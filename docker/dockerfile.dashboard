@@ -7,15 +7,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
+COPY pyproject.toml .
+COPY README.md .
 COPY src/ ./src/
+
+RUN pip install --no-cache-dir -r requirements.txt
 
 ENV PYTHONPATH=/app/src
 ENV PYTHONUNBUFFERED=1
 
 EXPOSE 8501
 
-CMD ["streamlit", "run", "src/fixfirst/dashboard/app.py", \
-     "--server.address=0.0.0.0", "--server.port=8501", \
-     "--server.headless=true"]
+CMD ["streamlit", "run", "src/fixfirst/dashboard/app.py", "--server.address=0.0.0.0", "--server.port=8501", "--server.headless=true"]

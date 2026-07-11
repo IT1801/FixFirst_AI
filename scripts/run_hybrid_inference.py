@@ -1,59 +1,54 @@
-"""
-CLI entrypoint to run hybrid ABSA inference over a batch of reviews and
-write results into review_aspects.
-
-Usage:
-    PYTHONPATH=src python scripts/run_hybrid_inference.py --split test [--limit N]
-
-Requires:
-  - Trained model artifacts (scripts/train_aspect_category.py,
-    scripts/train_aspect_sentiment.py)
-  - A valid LLM_PROVIDER API key in .env (for fallback routing)
-  - features_master seeded (scripts/seed_features.py)
-
-Prints the fallback-rate breakdown at the end — this is the number for
-the README ("X% of inferences required LLM fallback").
-"""
+"""Batch hybrid inference pipeline."""
 
 import argparse
 import sys
-
 import pandas as pd
 
-from fixfirst.config.settings import settings
 from fixfirst.exceptions.exception import FixFirstException
-from fixfirst.inference.pipeline import run_batch_hybrid_inference
+from fixfirst.ml._inference.pipeline import HybridInferencePipeline
 from fixfirst.logging.logger import logging
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run hybrid ABSA inference over a review split.")
-    parser.add_argument(
-        "--split", choices=["train", "val", "test"], default="test", help="Which processed split to run inference on"
-    )
-    parser.add_argument("--limit", type=int, default=None, help="Only process the first N reviews")
-    parser.add_argument("--dry-run", action="store_true", help="Run inference without writing to review_aspects")
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Run batch hybrid ABSA inference.")
+    parser.add_argument("--limit", type=int, default=2500, help="Max reviews to process")
+    parser.add_argument("--split", type=str, help="Dataset split to evaluate (e.g., test)")
+    parser.add_argument("--no-db", action="store_true", help="Skip writing results to the database")
     args = parser.parse_args()
 
     try:
-        split_path = settings.resolve_path(settings.data_processed_dir) / f"{args.split}.parquet"
-        if not split_path.exists():
-            raise FixFirstException(f"{split_path} not found — run scripts/run_preprocessing.py first.", sys)
+        from fixfirst.core._db.base import get_db
+        from fixfirst.core._db.models import RawReview
 
-        reviews_df = pd.read_parquet(split_path)
-        if args.limit:
-            reviews_df = reviews_df.head(args.limit)
+        logging.info(f"Starting batch inference (limit={args.limit})...")
+        
+        with get_db() as db:
+            reviews = db.query(RawReview.id, RawReview.review_text).limit(args.limit).all()
+            
+        if not reviews:
+            logging.info("No reviews found in the database.")
+            return 0
 
-        result = run_batch_hybrid_inference(reviews_df, write_to_db=not args.dry_run)
+        reviews_df = pd.DataFrame(reviews, columns=["id", "review_text"])
+        
+        pipeline = HybridInferencePipeline(write_to_db=not args.no_db)
+        stats = pipeline.run(reviews_df)
+        
+        print("\n" + "="*40)
+        print("🚀 BATCH INFERENCE COMPLETE")
+        print("="*40)
+        print(f"Reviews Processed: {stats['n_reviews_processed']}")
+        print(f"Aspects Written:   {stats['n_aspects_written']}")
+        print(f"LLM Fallback Rate: {stats['fallback_stats']['llm_fallback_rate']:.1%}")
+        print("="*40 + "\n")
+        return 0
+        
+    except FixFirstException as exc:
+        logging.error(f"Fatal error during batch inference: {exc}")
+        return 1
+    except Exception as exc:
+        logging.error(f"Fatal error during batch inference: {exc}")
+        return 1
 
-        stats = result["fallback_stats"]
-        logging.info(
-            f"Hybrid inference complete: {result['n_reviews_processed']} reviews -> "
-            f"{stats['total']} aspects ({result['n_aspects_written']} written to DB)"
-        )
-        logging.info(
-            f"Fallback breakdown: finetuned={stats['finetuned_rate']:.1%}, "
-            f"llm_fallback={stats['llm_fallback_rate']:.1%}"
-        )
-    except FixFirstException as e:
-        logging.error(str(e))
-        sys.exit(1)
+if __name__ == "__main__":
+    sys.exit(main())

@@ -31,7 +31,7 @@ from fixfirst.config.configuration import settings
 from fixfirst.exceptions.exception import FixFirstException
 
 CATEGORY_CONFIDENCE_THRESHOLD = settings.llm_fallback_threshold
-SENTIMENT_CONFIDENCE_THRESHOLD = settings.llm_fallback_threshold
+SENTIMENT_CONFIDENCE_THRESHOLD = settings.llm_sentiment_fallback_threshold
 
 
 def sigmoid(x: np.ndarray) -> np.ndarray:
@@ -44,37 +44,42 @@ def softmax(x: np.ndarray) -> np.ndarray:
     return exp / np.sum(exp, axis=-1, keepdims=True)
 
 
-def category_decision_confidence(probs: np.ndarray) -> np.ndarray:
+def category_decision_confidence(probs: np.ndarray, decision_threshold: float = 0.5) -> np.ndarray:
     """
     probs: shape (n_labels,), sigmoid outputs in [0, 1].
     Returns per-label confidence in whichever decision (positive/negative)
-    the probability implies: prob if >=0.5, else (1 - prob). Always in
-    [0.5, 1.0] by construction.
+    the probability implies, normalized to [0.5, 1.0] based on the decision_threshold.
     """
-    return np.where(probs >= 0.5, probs, 1.0 - probs)
+    pos_conf = 0.5 + 0.5 * ((probs - decision_threshold) / (1.0 - decision_threshold + 1e-9))
+    neg_conf = 0.5 + 0.5 * ((decision_threshold - probs) / (decision_threshold + 1e-9))
+    return np.where(probs >= decision_threshold, pos_conf, neg_conf)
 
 
 def category_needs_llm_fallback(
     probs: np.ndarray,
     threshold: float = CATEGORY_CONFIDENCE_THRESHOLD,
+    decision_threshold: float = 0.5,
 ) -> bool:
     try:
-        # 1. Get the confidence score (0.5 to 1.0) for ALL labels
-        confidences = category_decision_confidence(probs)
+        confidences = category_decision_confidence(probs, decision_threshold)
         
-        # 2. Find the single lowest confidence score across the entire taxonomy
-        min_confidence = float(np.min(confidences))
+        positive_indices = np.where(probs >= decision_threshold)[0]
         
-        # 3. If the model is unsure about ANY feature, route to the LLM
+        if len(positive_indices) == 0:
+            return False
+            
+        triggered_confidences = confidences[positive_indices]
+        min_confidence = float(np.min(triggered_confidences))
+        
         return min_confidence < threshold
 
     except Exception as e:
         raise FixFirstException(e, sys)
 
 
-def category_predicted_labels(probs: np.ndarray, label_names: List[str]) -> List[str]:
-    """Returns the feature_key names predicted positive (prob >= 0.5)."""
-    return [name for name, p in zip(label_names, probs) if p >= 0.5]
+def category_predicted_labels(probs: np.ndarray, label_names: List[str], decision_threshold: float = 0.5) -> List[str]:
+    """Returns the feature_key names predicted positive (prob >= decision_threshold)."""
+    return [name for name, p in zip(label_names, probs) if p >= decision_threshold]
 
 
 def sentiment_decision_confidence(probs: np.ndarray) -> float:

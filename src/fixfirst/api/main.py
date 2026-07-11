@@ -1,21 +1,12 @@
-"""
-FastAPI application factory for FixFirst AI.
-
-Usage (dev):
-    PYTHONPATH=src uvicorn fixfirst.api.main:app --reload --port 8000
-
-Usage (Docker, Phase 8): served by the (currently commented-out) `api`
-service in docker-compose.yml once this file exists — see that file's
-Phase 0 comments.
-"""
+"""FastAPI application factory for FixFirst AI."""
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from fixfirst import __version__
-from fixfirst.api.routes import criticality, features, reviews
+from fixfirst.api.routes import router
 from fixfirst.api.schemas import HealthOut
-from fixfirst.config.settings import settings
+from fixfirst.config.configuration import settings
 
 app = FastAPI(
     title="FixFirst AI",
@@ -23,8 +14,6 @@ app = FastAPI(
     version=__version__,
 )
 
-# Permissive CORS for local dev (Streamlit dashboard, React dev server).
-# Tighten allow_origins to specific domains before any real deployment.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"] if settings.app_env == "development" else [],
@@ -32,11 +21,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(features.router)
-app.include_router(reviews.router)
-app.include_router(criticality.router)
+app.include_router(router)
 
 
 @app.get("/health", response_model=HealthOut, tags=["health"])
 def health() -> HealthOut:
+    """Return a lightweight service health response."""
     return HealthOut(status="ok", version=__version__)

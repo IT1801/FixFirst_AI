@@ -40,15 +40,10 @@ flowchart LR
         J --> K[Gold eval vs AWARE annotations]
     end
 
-    subgraph "Hybrid Inference (Phase 5)"
-        L[New review] --> M{Category model<br/>confident?}
-        M -- yes --> N{Sentiment model<br/>confident?}
-        M -- no --> O[LLM fallback:<br/>full ABSA]
-        N -- yes --> P[Use fine-tuned prediction]
-        N -- no --> Q[LLM fallback:<br/>sentiment for this feature]
-        P --> R[(review_aspects)]
-        O --> R
-        Q --> R
+    subgraph "Inference (Phase 5)"
+        L[New review] --> M[Category model<br/>predicts features]
+        M --> N[Sentiment model<br/>predicts sentiment per feature]
+        N --> R[(review_aspects)]
     end
 
     subgraph "Scoring (Phase 6)"
@@ -83,16 +78,11 @@ flowchart LR
 
 ---
 
-## The hybrid ABSA pipeline
+## The ABSA pipeline
 
 1. **Aspect Category Classifier** (multi-label) — decides *which* features a review discusses, out of a curated taxonomy in `features_master`.
 2. **Aspect Sentiment Classifier** (3-class, sentence-pair) — given `(review, feature)`, decides the sentiment toward that specific feature.
-3. **Confidence-gated routing** — both models output calibrated confidence. Below a configurable threshold (`LLM_FALLBACK_THRESHOLD`, default `0.65`), the decision is deferred to an LLM instead of trusting an uncertain prediction:
-   - Category-uncertain → the whole review is re-analyzed by the LLM (one call gets both aspects and sentiment).
-   - Sentiment-uncertain (category was confident) → the LLM re-analyzes the review; if it corroborates the feature, its sentiment is used; if it doesn't, the fine-tuned prediction is retained rather than discarded.
-4. Every prediction is tagged `source: finetuned | llm_fallback` in `review_aspects`, which is what makes the fallback rate measurable rather than anecdotal.
-
-**Fallback rate:** *TBD — run `scripts/run_hybrid_inference.py` and report `fallback_stats` here, e.g. "12% of inferences required LLM fallback, concentrated in 3 rare feature categories."*
+3. Every prediction is tagged `source: finetuned` in `review_aspects`.
 
 ---
 
