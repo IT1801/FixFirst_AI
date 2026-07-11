@@ -96,7 +96,13 @@ class AspectCategoryTrainer(BaseModelTrainer):
                     label_col = non_id_cols[0] if non_id_cols else labels_df.columns[-1]
                 labels_df = labels_df.rename(columns={label_col: "feature_key"})
 
-            feature_keys = sorted(labels_df["feature_key"].dropna().unique().tolist())
+            MIN_SUPPORT = 20
+            label_counts = labels_df["feature_key"].value_counts()
+            valid_features = label_counts[label_counts >= MIN_SUPPORT].index.tolist()
+            if not valid_features:
+                raise FixFirstException(f"No categories have at least {MIN_SUPPORT} examples.", sys)
+                
+            feature_keys = sorted(valid_features)
             label_index = build_label_index(feature_keys)
             label_names = [name for name, _ in sorted(label_index.items(), key=lambda item: item[1])]
             if self.limit is not None:
