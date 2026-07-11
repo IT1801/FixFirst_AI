@@ -41,6 +41,7 @@ class AspectSentimentTrainer(BaseModelTrainer):
             TrainingArguments,
             EarlyStoppingCallback,
         )
+        from peft import get_peft_model, LoraConfig, TaskType
 
         from fixfirst.core._db.base import get_db
         from fixfirst.core._db.models import FeatureMaster, ModelTask
@@ -98,10 +99,18 @@ class AspectSentimentTrainer(BaseModelTrainer):
             logging.info(f"AspectSentimentTrainer: train={len(train_df)} val={len(val_df)}")
 
             tokenizer = AutoTokenizer.from_pretrained(self.ml_config.base_model_name)
-            model = AutoModelForSequenceClassification.from_pretrained(
+            base_model = AutoModelForSequenceClassification.from_pretrained(
                 self.ml_config.base_model_name,
                 num_labels=len(SENTIMENT_LABELS),
             )
+            peft_config = LoraConfig(
+                task_type=TaskType.SEQ_CLS,
+                r=8,
+                lora_alpha=16,
+                lora_dropout=0.1
+            )
+            model = get_peft_model(base_model, peft_config)
+            model.print_trainable_parameters()
 
             train_dataset = AspectSentimentDataset(
                 train_df["text_a"].tolist(),

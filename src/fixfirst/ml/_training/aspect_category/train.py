@@ -45,6 +45,7 @@ class AspectCategoryTrainer(BaseModelTrainer):
                 Trainer,
                 TrainingArguments,
             )
+            from peft import get_peft_model, LoraConfig, TaskType
 
             from fixfirst.core._db.base import get_db
             from fixfirst.core._db.models import FeatureMaster, ModelTask
@@ -114,13 +115,21 @@ class AspectCategoryTrainer(BaseModelTrainer):
             )
 
             tokenizer = AutoTokenizer.from_pretrained(self.ml_config.base_model_name)
-            model = AutoModelForSequenceClassification.from_pretrained(
+            base_model = AutoModelForSequenceClassification.from_pretrained(
                 self.ml_config.base_model_name,
                 num_labels=len(label_names),
                 problem_type="multi_label_classification",
                 id2label={index: name for name, index in label_index.items()},
                 label2id=label_index,
             )
+            peft_config = LoraConfig(
+                task_type=TaskType.SEQ_CLS,
+                r=8,
+                lora_alpha=16,
+                lora_dropout=0.1
+            )
+            model = get_peft_model(base_model, peft_config)
+            model.print_trainable_parameters()
             
             train_dataset = AspectCategoryDataset(
                 train_df["review_text"].tolist(),

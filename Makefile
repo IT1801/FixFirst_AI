@@ -29,11 +29,11 @@ env: ## Copy .env.example to .env (won't overwrite an existing .env)
 
 .PHONY: install
 install: ## Install serving/pipeline dependencies (no torch)
-	pip install -r requirements.txt --break-system-packages
+	$(PYTHON) -m pip install -r requirements.txt --break-system-packages
 
 .PHONY: install-training
 install-training: ## Install training-only dependencies (torch, transformers, mlflow)
-	pip install -r requirements-training.txt --break-system-packages
+	$(PYTHON) -m pip install -r requirements-training.txt --break-system-packages
 
 # --- Docker infrastructure --------------------------------------------------
 
