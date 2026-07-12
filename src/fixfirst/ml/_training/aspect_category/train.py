@@ -126,7 +126,8 @@ class AspectCategoryTrainer(BaseModelTrainer):
                 task_type=TaskType.SEQ_CLS,
                 r=8,
                 lora_alpha=16,
-                lora_dropout=0.1
+                lora_dropout=0.1,
+                modules_to_save=["pooler", "classifier"]
             )
             model = get_peft_model(base_model, peft_config)
             model.print_trainable_parameters()
@@ -159,7 +160,7 @@ class AspectCategoryTrainer(BaseModelTrainer):
                 num_train_epochs=self.ml_config.num_epochs,
                 per_device_train_batch_size=self.ml_config.batch_size,
                 per_device_eval_batch_size=self.ml_config.batch_size,
-                learning_rate=self.ml_config.learning_rate,
+                learning_rate=2e-4, # Boosted learning rate for PEFT multi-label training
                 eval_strategy="epoch",
                 save_strategy="epoch",
                 load_best_model_at_end=True,
