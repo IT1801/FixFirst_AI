@@ -111,7 +111,14 @@ class AWAREIngestor(DataIngestor):
             raise FixFirstException(exc, sys) from exc
 
     def transform(self, df: pd.DataFrame) -> List[Dict]:
-        """Transform raw AWARE rows into raw_reviews-shaped records."""
+        """Transform raw AWARE rows into raw_reviews-shaped records.
+
+        Each row in the output corresponds to ONE sentence from the AWARE dataset.
+        The original AWARE review_id is preserved in raw_metadata under the key
+        ``aware_review_id`` so that the downstream split step can group all sentences
+        belonging to the same review and perform a *review-level* train/val/test split,
+        thereby eliminating sentence-level data leakage.
+        """
         try:
             app_col = self.config.app_column
             domain_col = self.config.domain_column
@@ -122,6 +129,8 @@ class AWAREIngestor(DataIngestor):
             from_col = self.config.from_column
             to_col = self.config.to_column
             rating_col = self.config.rating_column
+            # Optional: AWARE provides review_id and sentence_id columns.
+            review_id_col = "review_id" if "review_id" in df.columns else None
 
             logging.info("Transforming AWARE rows into raw_reviews records")
 
@@ -149,11 +158,28 @@ class AWAREIngestor(DataIngestor):
                         "polarity": None if pd.isna(polarity) else str(polarity),
                     }
                     if has_span_columns:
-                        annotation["from"] = None if pd.isna(row[from_col]) else int(row[from_col])
-                        annotation["to"] = None if pd.isna(row[to_col]) else int(row[to_col])
+                        from_val = row[from_col]
+                        to_val   = row[to_col]
+                        annotation["from"] = None if (pd.isna(from_val) or str(from_val) in ("N/A", "NA")) else int(from_val)
+                        annotation["to"]   = None if (pd.isna(to_val)   or str(to_val)   in ("N/A", "NA")) else int(to_val)
 
                     annotations.append(annotation)
+
                 rating = group.iloc[0][rating_col]
+
+                # Preserve the original AWARE review_id for leak-free group splitting.
+                aware_review_id = None
+                if review_id_col:
+                    raw_rid = group.iloc[0][review_id_col]
+                    aware_review_id = str(raw_rid) if raw_rid and raw_rid not in ("N/A", "NA") else None
+
+                metadata: Dict = {
+                    "domain": str(domain),
+                    RAW_METADATA_AWARE: annotations,
+                }
+                if aware_review_id:
+                    metadata["aware_review_id"] = aware_review_id
+
                 records.append(
                     {
                         "id": uuid.uuid4(),
@@ -161,7 +187,7 @@ class AWAREIngestor(DataIngestor):
                         "app_id": str(app_name),
                         "review_text": str(sentence),
                         "rating": None if pd.isna(rating) else int(rating),
-                        "raw_metadata": {"domain": str(domain), RAW_METADATA_AWARE: annotations},
+                        "raw_metadata": metadata,
                     }
                 )
 

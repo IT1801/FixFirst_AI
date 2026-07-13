@@ -23,14 +23,20 @@ class AspectCategoryTrainer(BaseModelTrainer):
     """Trainer class for the aspect category model."""
 
     def _load_inputs(self) -> tuple[pd.DataFrame, pd.DataFrame]:
-        extracted_dir = self.settings.resolve_path(self.settings.data_extracted_labels_dir)
-        labels_path = extracted_dir / EXTRACTED_LABELS_FILENAME
-        progress_path = extracted_dir / EXTRACTED_PROGRESS_FILENAME
-        if not labels_path.exists() or not progress_path.exists():
-            raise FixFirstException(
-                "Extracted-label files are missing — run `make label` before `make train`.", sys
-            )
-        return pd.read_parquet(labels_path), pd.read_parquet(progress_path)
+        """Load train and val aspect_category JSONL files."""
+        fmt_dir = self.settings.resolve_path(self.settings.data_training_format_dir)
+        train_path = fmt_dir / "train" / "aspect_category.jsonl"
+        val_path   = fmt_dir / "val"   / "aspect_category.jsonl"
+        for p in (train_path, val_path):
+            if not p.exists():
+                raise FixFirstException(
+                    f"Training-format file missing: {p} — run `make preprocess` first.", sys
+                )
+        def _read_jsonl(path) -> pd.DataFrame:
+            import json
+            records = [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
+            return pd.DataFrame(records)
+        return _read_jsonl(train_path), _read_jsonl(val_path)
 
     def train(self) -> Dict[str, Any]:
         """Train, evaluate, persist, and register the category classifier."""
@@ -58,59 +64,72 @@ class AspectCategoryTrainer(BaseModelTrainer):
                     outputs = model(**inputs)
                     logits = outputs.logits
                     
+                    weights = None
                     if self.pos_weights_tensor is not None:
-                        self.pos_weights_tensor = self.pos_weights_tensor.to(logits.device)
+                        weights = self.pos_weights_tensor.to(logits.device)
                         
-                    loss_fct = nn.BCEWithLogitsLoss(pos_weight=self.pos_weights_tensor)
+                    loss_fct = nn.BCEWithLogitsLoss(pos_weight=weights)
                     loss = loss_fct(
-                        logits.view(-1, self.model.config.num_labels), 
-                        labels.view(-1, self.model.config.num_labels)
+                        logits.view(-1, logits.shape[-1]), 
+                        labels.view(-1, logits.shape[-1])
                     )
                     return (loss, outputs) if return_outputs else loss
             # ----------------------------------------
 
-            labels_df, progress_df = self._load_inputs()
+            train_df, val_df = self._load_inputs()
 
-            label_col = "feature_key"
-            if label_col not in labels_df.columns:
-                possible_cols = [c for c in labels_df.columns if "feature" in c.lower() or "label" in c.lower() or "category" in c.lower()]
-                if possible_cols:
-                    label_col = possible_cols[0]
-                else:
-                    non_id_cols = [c for c in labels_df.columns if c != "review_id"]
-                    label_col = non_id_cols[0] if non_id_cols else labels_df.columns[-1]
-                labels_df = labels_df.rename(columns={label_col: "feature_key"})
+            import json as _json
+            import numpy as np
+
+            # Load the canonical vocab produced by the preprocessing pipeline
+            fmt_dir = self.settings.resolve_path(self.settings.data_training_format_dir)
+            vocab_path = fmt_dir / "label_vocab.json"
+            if vocab_path.exists():
+                with vocab_path.open() as _f:
+                    vocab_data = _json.load(_f)
+                LABEL_VOCAB   = vocab_data["label_vocab"]
+                label_index   = vocab_data["label_to_idx"]
+            else:
+                # Fall back to sorted unique labels across the training set
+                all_labels = sorted({l for row in train_df["labels"] for l in (row if isinstance(row, list) else [])})
+                label_index = build_label_index(all_labels)
+                LABEL_VOCAB = [k for k, _ in sorted(label_index.items(), key=lambda x: x[1])]
+
+            label_names = [k for k, _ in sorted(label_index.items(), key=lambda x: x[1])]
+            n_labels = len(label_names)
+
+            def _rows_to_examples(df: pd.DataFrame) -> pd.DataFrame:
+                rows = []
+                pos_counts = np.zeros(n_labels, dtype=np.float32)
+                for _, row in df.iterrows():
+                    lbls = row["labels"] if isinstance(row["labels"], list) else []
+                    vec = np.zeros(n_labels, dtype=np.float32)
+                    for lbl in lbls:
+                        idx = label_index.get(lbl)
+                        if idx is not None:
+                            vec[idx] = 1.0
+                            pos_counts[idx] += 1.0
+                    rows.append({"review_text": row["text"], "labels": vec})
+                return pd.DataFrame(rows), pos_counts
+
+            train_examples, pos_counts = _rows_to_examples(train_df)
+            val_examples, _            = _rows_to_examples(val_df)
 
             if self.limit is not None:
-                selected_ids = progress_df["review_id"].drop_duplicates().head(self.limit)
-                progress_df = progress_df[progress_df["review_id"].isin(selected_ids)]
-                labels_df = labels_df[labels_df["review_id"].isin(selected_ids)]
+                train_examples = train_examples.head(self.limit)
 
-            labeled_ids = progress_df[progress_df["status"] == "labeled"]["review_id"]
-            valid_labels_df = labels_df[labels_df["review_id"].isin(labeled_ids)]
+            total = len(train_examples)
+            MAX_WEIGHT_CAP = 15.0
+            pos_weights = {}
+            for feat, idx in label_index.items():
+                neg = total - pos_counts[idx]
+                pos_weights[feat] = min(float(neg / (pos_counts[idx] + 1e-5)), MAX_WEIGHT_CAP)
 
-            MIN_SUPPORT = 20
-            label_counts = valid_labels_df["feature_key"].value_counts()
-            valid_features = label_counts[label_counts >= MIN_SUPPORT].index.tolist()
-            if not valid_features:
-                raise FixFirstException(f"No categories have at least {MIN_SUPPORT} examples.", sys)
-                
-            feature_keys = sorted(valid_features)
-            label_index = build_label_index(feature_keys)
-            label_names = [name for name, _ in sorted(label_index.items(), key=lambda item: item[1])]
-
-            examples_df, pos_weights = build_category_examples(labels_df, progress_df, feature_keys)
-            
-            if len(examples_df) < 2:
+            if len(train_examples) < 2:
                 raise FixFirstException("At least two labeled reviews are required for training.", sys)
 
-            train_df, val_df = train_test_split(
-                examples_df,
-                test_size=max(1, int(round(len(examples_df) * self.split_config.val_size))),
-                random_state=self.split_config.random_state,
-            )
             logging.info(
-                f"AspectCategoryTrainer: train={len(train_df)} val={len(val_df)} "
+                f"AspectCategoryTrainer: train={len(train_examples)} val={len(val_examples)} "
                 f"labels={len(label_names)}"
             )
 
@@ -124,23 +143,29 @@ class AspectCategoryTrainer(BaseModelTrainer):
             )
             peft_config = LoraConfig(
                 task_type=TaskType.SEQ_CLS,
-                r=8,
-                lora_alpha=16,
+                r=16,
+                lora_alpha=32,
                 lora_dropout=0.1,
+                target_modules=[
+                    "query_proj",
+                    "key_proj",
+                    "value_proj",
+                    "dense",
+                ],
                 modules_to_save=["pooler", "classifier"]
             )
             model = get_peft_model(base_model, peft_config)
             model.print_trainable_parameters()
             
             train_dataset = AspectCategoryDataset(
-                train_df["review_text"].tolist(),
-                train_df["labels"].tolist(),
+                train_examples["review_text"].tolist(),
+                train_examples["labels"].tolist(),
                 tokenizer,
                 self.ml_config.max_length,
             )
             val_dataset = AspectCategoryDataset(
-                val_df["review_text"].tolist(),
-                val_df["labels"].tolist(),
+                val_examples["review_text"].tolist(),
+                val_examples["labels"].tolist(),
                 tokenizer,
                 self.ml_config.max_length,
             )
@@ -204,8 +229,8 @@ class AspectCategoryTrainer(BaseModelTrainer):
                         "batch_size": self.ml_config.batch_size,
                         "num_epochs": self.ml_config.num_epochs,
                         "learning_rate": self.ml_config.learning_rate,
-                        "train_size": len(train_df),
-                        "val_size": len(val_df),
+                        "train_size": len(train_examples),
+                        "val_size": len(val_examples),
                         "prediction_threshold": self.ml_config.prediction_threshold,
                     }
                 )

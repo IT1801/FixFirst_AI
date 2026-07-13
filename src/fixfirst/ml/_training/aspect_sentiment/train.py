@@ -24,10 +24,20 @@ from fixfirst.ml._training.common import BaseModelTrainer
 class AspectSentimentTrainer(BaseModelTrainer):
     """Trainer class for the aspect sentiment model."""
 
-    def _load_inputs(self) -> pd.DataFrame:
-        extracted_dir = self.settings.resolve_path(self.settings.data_extracted_labels_dir)
-        labels_df = pd.read_parquet(extracted_dir / EXTRACTED_LABELS_FILENAME)
-        return labels_df
+    def _load_inputs(self) -> tuple[pd.DataFrame, pd.DataFrame]:
+        """Load train and val aspect_sentiment JSONL files."""
+        import json
+        fmt_dir = self.settings.resolve_path(self.settings.data_training_format_dir)
+        train_path = fmt_dir / "train" / "aspect_sentiment.jsonl"
+        val_path   = fmt_dir / "val"   / "aspect_sentiment.jsonl"
+        for p in (train_path, val_path):
+            if not p.exists():
+                raise FixFirstException(
+                    f"Training-format file missing: {p} — run `make preprocess` first.", sys
+                )
+        def _read(path):
+            return pd.DataFrame([json.loads(l) for l in path.read_text().splitlines() if l.strip()])
+        return _read(train_path), _read(val_path)
 
     def train(self) -> Dict[str, Any]:
         """Full training run."""
@@ -54,14 +64,13 @@ class AspectSentimentTrainer(BaseModelTrainer):
                 outputs = model(**inputs)
                 logits = outputs.logits
                 
+                weights = None
                 if self.class_weights_tensor is not None:
-                    self.class_weights_tensor = self.class_weights_tensor.to(logits.device)
-                    loss_fct = nn.CrossEntropyLoss(weight=self.class_weights_tensor)
-                else:
-                    loss_fct = nn.CrossEntropyLoss()
+                    weights = self.class_weights_tensor.to(logits.device)
                     
+                loss_fct = nn.CrossEntropyLoss(weight=weights)
                 loss = loss_fct(
-                    logits.view(-1, self.model.config.num_labels), 
+                    logits.view(-1, logits.shape[-1]), 
                     labels.view(-1)
                 )
                 
@@ -69,40 +78,36 @@ class AspectSentimentTrainer(BaseModelTrainer):
         # ------------------------------------------------------
 
         try:
-            labels_df = self._load_inputs()
-            
-            label_col = "feature_key"
-            if label_col not in labels_df.columns:
-                possible_cols = [c for c in labels_df.columns if "feature" in c.lower() or "label" in c.lower() or "category" in c.lower()]
-                if possible_cols:
-                    label_col = possible_cols[0]
-                else:
-                    non_id_cols = [c for c in labels_df.columns if c != "review_id"]
-                    label_col = non_id_cols[0] if non_id_cols else labels_df.columns[-1]
-                labels_df = labels_df.rename(columns={label_col: "feature_key"})
-                
-            feature_keys = labels_df["feature_key"].dropna().unique().tolist()
-            feature_display_names = {k: k.replace("_", " ").title() for k in feature_keys}
+            train_df, val_df = self._load_inputs()
+
+            # Each JSONL row: {review_id, aspect, text, label}
+            # Map string sentiment -> integer class index
+            sentiment_index = {lbl: i for i, lbl in enumerate(SENTIMENT_LABELS)}
+
+            def _prepare(df: pd.DataFrame) -> pd.DataFrame:
+                df = df[df["label"].isin(SENTIMENT_LABELS)].copy()
+                df["text_a"] = df["text"]
+                df["text_b"] = df["aspect"].str.replace("_", " ").str.title()
+                df["label"]  = df["label"].map(sentiment_index)
+                return df.reset_index(drop=True)
+
+            train_df = _prepare(train_df)
+            val_df   = _prepare(val_df)
 
             if self.limit:
-                labels_df = labels_df.head(self.limit)
+                train_df = train_df.head(self.limit)
 
-            examples_df, class_weights = build_sentiment_examples(labels_df, feature_display_names)
+            # Compute class weights for imbalanced data
+            import numpy as np
+            labels_list  = train_df["label"].tolist()
+            total        = len(labels_list)
+            num_classes  = len(SENTIMENT_LABELS)
+            class_counts = np.bincount(labels_list, minlength=num_classes)
+            class_weights = [min(total / (num_classes * (c + 1e-5)), 10.0) for c in class_counts]
 
-            label_counts = examples_df["label"].value_counts()
-            can_stratify = (label_counts >= 2).all() and examples_df["label"].nunique() > 1
+            label_counts  = train_df["label"].value_counts()
+            can_stratify  = (label_counts >= 2).all() and train_df["label"].nunique() > 1
 
-            train_df, val_df = train_test_split(
-                examples_df,
-                test_size=self.split_config.val_size,
-                random_state=self.split_config.random_state,
-                stratify=examples_df["label"] if can_stratify else None,
-            )
-            if not can_stratify:
-                logging.info(
-                    "AspectSentimentTrainer: skipping stratified split "
-                    "(a sentiment class has <2 examples), using plain random split"
-                )
             logging.info(f"AspectSentimentTrainer: train={len(train_df)} val={len(val_df)}")
 
             tokenizer = AutoTokenizer.from_pretrained(self.ml_config.base_model_name)
@@ -112,9 +117,15 @@ class AspectSentimentTrainer(BaseModelTrainer):
             )
             peft_config = LoraConfig(
                 task_type=TaskType.SEQ_CLS,
-                r=8,
-                lora_alpha=16,
-                lora_dropout=0.1
+                r=16,
+                lora_alpha=32,
+                lora_dropout=0.1,
+                target_modules=[
+                    "query_proj",
+                    "key_proj",
+                    "value_proj",
+                    "dense",
+                ],
             )
             model = get_peft_model(base_model, peft_config)
             model.print_trainable_parameters()

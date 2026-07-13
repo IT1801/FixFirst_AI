@@ -173,6 +173,9 @@ class Settings:
     data_extracted_labels_dir: str = field(
         default_factory=lambda: _get_env("DATA_EXTRACTED_LABELS_DIR", "data/extracted_labels")
     )
+    data_training_format_dir: str = field(
+        default_factory=lambda: _get_env("DATA_TRAINING_FORMAT_DIR", "data/training_format")
+    )
     data_gold_eval_dir: str = field(default_factory=lambda: _get_env("DATA_GOLD_EVAL_DIR", "data/gold_eval"))
     model_artifact_dir: str = field(default_factory=lambda: _get_env("MODEL_ARTIFACT_DIR", "artifacts/models"))
 

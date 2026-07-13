@@ -5,7 +5,9 @@ Orchestrates: load raw_reviews from Postgres -> clean -> deduplicate ->
 filter to English -> split into train/val/test -> write Parquet.
 """
 
+import json
 import sys
+from pathlib import Path
 from typing import Dict
 
 import pandas as pd
@@ -53,6 +55,80 @@ class PreprocessingPipeline:
         except Exception as e:
             raise FixFirstException(e, sys) from e
 
+    def _build_training_format(self, splits: Dict[str, pd.DataFrame]) -> None:
+        """
+        Convert the three parquet splits into three JSONL files per split:
+          - master.jsonl          : review_id + text + aspects list
+          - aspect_category.jsonl : text + multi-label category list
+          - aspect_sentiment.jsonl: aspect + text + sentiment label (one row per aspect)
+
+        Written to  <data_training_format_dir>/<split>/  so every downstream
+        trainer can load data without touching the database or extracted labels.
+        """
+        LABEL_VOCAB = sorted([
+            "aesthetics", "compatibility", "cost", "effectiveness",
+            "efficiency", "enjoyability", "general", "learnability",
+            "reliability", "safety", "security", "usability",
+        ])
+        LABEL_TO_IDX = {lbl: i for i, lbl in enumerate(LABEL_VOCAB)}
+        INVALID = {"N/A", "NA", "", None}
+
+        def _parse_aspects(raw_metadata):
+            annots = raw_metadata.get("aware_annotations", []) if isinstance(raw_metadata, dict) else []
+            seen, aspects = set(), []
+            for a in annots:
+                if not isinstance(a, dict):
+                    continue
+                cat = a.get("aspect_category")
+                pol = a.get("polarity")
+                if cat in INVALID or cat not in LABEL_TO_IDX:
+                    continue
+                pol = None if pol in INVALID else pol
+                key = (cat, pol)
+                if key not in seen:
+                    seen.add(key)
+                    aspects.append({"category": cat, "sentiment": pol})
+            return aspects
+
+        out_root = self.settings.resolve_path(self.settings.data_training_format_dir)
+
+        for split_name, df in splits.items():
+            split_dir = out_root / split_name
+            split_dir.mkdir(parents=True, exist_ok=True)
+
+            master_recs, cat_recs, sent_recs = [], [], []
+            for _, row in df.iterrows():
+                text = str(row["review_text"]).strip()
+                rid  = str(row["id"])
+                if not text:
+                    continue
+                aspects = _parse_aspects(row["raw_metadata"])
+                master_recs.append({"review_id": rid, "text": text, "aspects": aspects})
+                labels = sorted({a["category"] for a in aspects})
+                cat_recs.append({"review_id": rid, "text": text, "labels": labels})
+                for asp in aspects:
+                    if asp["sentiment"] is None:
+                        continue
+                    sent_recs.append({"review_id": rid, "aspect": asp["category"],
+                                      "text": text, "label": asp["sentiment"]})
+
+            for filename, records in [
+                ("master.jsonl",           master_recs),
+                ("aspect_category.jsonl",  cat_recs),
+                ("aspect_sentiment.jsonl", sent_recs),
+            ]:
+                path = split_dir / filename
+                with path.open("w", encoding="utf-8") as f:
+                    for rec in records:
+                        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+                logging.info(f"_build_training_format: wrote {len(records):,} records → {path}")
+
+        # Write shared vocab
+        vocab_path = out_root / "label_vocab.json"
+        with vocab_path.open("w") as f:
+            json.dump({"label_vocab": LABEL_VOCAB, "label_to_idx": LABEL_TO_IDX}, f, indent=2)
+        logging.info(f"_build_training_format: vocab written → {vocab_path}")
+
     def run(self, write_output: bool = True) -> Dict[str, pd.DataFrame]:
         """Runs the full preprocessing pipeline."""
         try:
@@ -70,6 +146,8 @@ class PreprocessingPipeline:
                 config=self.split_config,
             )
 
+            splits = {"train": train_df, "val": val_df, "test": test_df}
+
             if write_output:
                 out_dir = self.settings.resolve_path(self.settings.data_processed_dir)
                 out_dir.mkdir(parents=True, exist_ok=True)
@@ -77,10 +155,12 @@ class PreprocessingPipeline:
                 train_df.to_parquet(out_dir / TRAIN_FILENAME, index=False)
                 val_df.to_parquet(out_dir / VAL_FILENAME, index=False)
                 test_df.to_parquet(out_dir / TEST_FILENAME, index=False)
+                logging.info(f"run: wrote train/val/test Parquet files to {out_dir}")
 
-                logging.info(f"run_preprocessing_pipeline: wrote train/val/test Parquet files to {out_dir}")
+                # Build the three JSONL training-format files from the fresh splits
+                self._build_training_format(splits)
 
-            return {"train": train_df, "val": val_df, "test": test_df}
+            return splits
         except FixFirstException:
             raise
         except Exception as e:

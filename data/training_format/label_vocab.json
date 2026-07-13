@@ -1,0 +1,30 @@
+{
+  "label_vocab": [
+    "aesthetics",
+    "compatibility",
+    "cost",
+    "effectiveness",
+    "efficiency",
+    "enjoyability",
+    "general",
+    "learnability",
+    "reliability",
+    "safety",
+    "security",
+    "usability"
+  ],
+  "label_to_idx": {
+    "aesthetics": 0,
+    "compatibility": 1,
+    "cost": 2,
+    "effectiveness": 3,
+    "efficiency": 4,
+    "enjoyability": 5,
+    "general": 6,
+    "learnability": 7,
+    "reliability": 8,
+    "safety": 9,
+    "security": 10,
+    "usability": 11
+  }
+}

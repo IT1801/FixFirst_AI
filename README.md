@@ -158,12 +158,21 @@ make ingest CSV=data/raw/aware_reviews.csv
 <sub>Raw: `PYTHONPATH=src python scripts/ingest_aware.py --csv data/raw/aware_reviews.csv`</sub>
 
 ### 5. Preprocess
+Runs cleaning → deduplication → **review-level** train/val/test split (no data leakage) → writes Parquet splits and auto-generates the three training-format JSONL files:
+
+| File | Purpose |
+|---|---|
+| `data/training_format/{split}/master.jsonl` | Full ground truth (text + all aspects + sentiments) |
+| `data/training_format/{split}/aspect_category.jsonl` | Multi-label category classification input |
+| `data/training_format/{split}/aspect_sentiment.jsonl` | Per-aspect sentiment classification input |
+
 ```bash
 make preprocess
 ```
 <sub>Raw: `PYTHONPATH=src python scripts/run_preprocessing.py`</sub>
 
-### 6. Extract ground-truth labels
+### 6. (Optional) Extract additional ground-truth labels via LLM
+This step is no longer required for training — the preprocessing pipeline generates all training data directly from the AWARE annotations. Only run this if you want LLM-augmented labels for evaluation or research purposes.
 ```bash
 make label LIMIT=10   # sanity check first
 make label BATCH_SIZE=8   # full run
@@ -171,6 +180,7 @@ make label BATCH_SIZE=8   # full run
 <sub>Raw: `PYTHONPATH=src python scripts/extract_gold_labels.py [--limit 10] [--batch-size 8]`</sub>
 
 ### 7. Train the fine-tuned models
+Both classifiers now load directly from `data/training_format/` — no `make label` step needed beforehand.
 ```bash
 make install-training
 make train              # both classifiers
