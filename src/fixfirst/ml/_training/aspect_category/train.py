@@ -150,7 +150,6 @@ class AspectCategoryTrainer(BaseModelTrainer):
                     "query_proj",
                     "key_proj",
                     "value_proj",
-                    "dense",
                 ],
                 modules_to_save=["pooler", "classifier"]
             )

@@ -1,0 +1,15 @@
+artifact_uri: file:///Users/ishanthakkar/Desktop/FixFirst_AI/mlruns/692492423909061481/b48b36722bd842799b3e03a882829952/artifacts
+end_time: null
+entry_point_name: ''
+experiment_id: '692492423909061481'
+lifecycle_stage: active
+run_id: b48b36722bd842799b3e03a882829952
+run_name: aspect_category_classifier
+run_uuid: b48b36722bd842799b3e03a882829952
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1783901957786
+status: 1
+tags: []
+user_id: ishanthakkar

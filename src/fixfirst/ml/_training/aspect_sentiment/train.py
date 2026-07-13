@@ -124,7 +124,6 @@ class AspectSentimentTrainer(BaseModelTrainer):
                     "query_proj",
                     "key_proj",
                     "value_proj",
-                    "dense",
                 ],
             )
             model = get_peft_model(base_model, peft_config)

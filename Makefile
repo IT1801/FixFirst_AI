@@ -88,10 +88,6 @@ ingest: ## Ingest AWARE CSV into raw_reviews (CSV=path/to/file.csv)
 preprocess: ## Clean, dedupe, filter, split into train/val/test Parquet
 	$(SRC_ENV) $(PYTHON) scripts/run_preprocessing.py
 
-.PHONY: label
-label: ## Extract ground-truth labels from the dataset (LIMIT=N to sanity-check)
-	$(SRC_ENV) $(PYTHON) scripts/extract_gold_labels.py $(if $(LIMIT),--limit $(LIMIT),) $(if $(BATCH_SIZE),--batch-size $(BATCH_SIZE),)
-
 # --- Model training (requires: make install-training) ------------------------
 
 .PHONY: train-category

@@ -171,15 +171,7 @@ make preprocess
 ```
 <sub>Raw: `PYTHONPATH=src python scripts/run_preprocessing.py`</sub>
 
-### 6. (Optional) Extract additional ground-truth labels via LLM
-This step is no longer required for training — the preprocessing pipeline generates all training data directly from the AWARE annotations. Only run this if you want LLM-augmented labels for evaluation or research purposes.
-```bash
-make label LIMIT=10   # sanity check first
-make label BATCH_SIZE=8   # full run
-```
-<sub>Raw: `PYTHONPATH=src python scripts/extract_gold_labels.py [--limit 10] [--batch-size 8]`</sub>
-
-### 7. Train the fine-tuned models
+### 6. Train the fine-tuned models
 Both classifiers now load directly from `data/training_format/` — no `make label` step needed beforehand.
 ```bash
 make install-training
