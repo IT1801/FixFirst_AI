@@ -17,7 +17,7 @@ from fixfirst.api.schemas import (
     ReviewOut,
     TrendPointOut,
 )
-from fixfirst.constants import MAX_API_LIMIT
+from fixfirst.constants import DEFAULT_API_LIMIT
 from fixfirst.core.db import RawReview
 from fixfirst.exceptions.exception import FixFirstException
 
@@ -63,7 +63,7 @@ def get_reviews(
     feature_key: Optional[str] = Query(None, description="Filter by feature"),
     sentiment: Optional[str] = Query(None, description="Filter by sentiment"),
     source: Optional[str] = Query(None, description="Filter by ingestion source"),
-    limit: int = Query(50, ge=1, le=MAX_API_LIMIT),
+    limit: int = Query(50, ge=1, le=DEFAULT_API_LIMIT),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db_session),
 ) -> PaginatedReviews:
@@ -95,7 +95,7 @@ def get_reviews(
 )
 def get_criticality_scores(
     priority: Optional[str] = Query(None, pattern="^(high|low)$"),
-    limit: int = Query(50, ge=1, le=MAX_API_LIMIT),
+    limit: int = Query(50, ge=1, le=DEFAULT_API_LIMIT),
     db: Session = Depends(get_db_session),
 ) -> List[CriticalityScoreOut]:
     try:

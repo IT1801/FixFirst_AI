@@ -60,7 +60,7 @@ services:
     env_file: .env
     environment:
       DB_HOST: db
-      DB_PORT: ${DB_PORT:-5432}
+      DB_PORT: 5432
       DB_USER: ${POSTGRES_USER:-fixfirst}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-fixfirst}
       DB_NAME: ${POSTGRES_DB:-fixfirst}

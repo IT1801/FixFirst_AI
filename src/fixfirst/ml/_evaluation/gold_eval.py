@@ -30,13 +30,13 @@ class GoldEvaluator:
             raise FixFirstException(f"{test_path} not found — run scripts/run_preprocessing.py first.", sys)
         return pd.read_parquet(test_path)
 
-    def _run_category_model_inference(self, texts: List[str], model_dir: str, max_length: int) -> np.ndarray:
+    def _run_category_model_inference(self, texts: List[str], model_dir: str, max_length: int, num_labels: int) -> np.ndarray:
         """Runs the fine-tuned category classifier over a list of texts, batched."""
         import torch
         from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
         tokenizer = AutoTokenizer.from_pretrained(model_dir)
-        model = AutoModelForSequenceClassification.from_pretrained(model_dir)
+        model = AutoModelForSequenceClassification.from_pretrained(model_dir, num_labels=num_labels)
         model.eval()
 
         all_logits = []
@@ -50,13 +50,13 @@ class GoldEvaluator:
 
         return np.concatenate(all_logits, axis=0)
 
-    def _run_sentiment_model_inference(self, text_a: List[str], text_b: List[str], model_dir: str, max_length: int) -> np.ndarray:
+    def _run_sentiment_model_inference(self, text_a: List[str], text_b: List[str], model_dir: str, max_length: int, num_labels: int) -> np.ndarray:
         """Runs the fine-tuned sentiment classifier over sentence pairs, batched."""
         import torch
         from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
         tokenizer = AutoTokenizer.from_pretrained(model_dir)
-        model = AutoModelForSequenceClassification.from_pretrained(model_dir)
+        model = AutoModelForSequenceClassification.from_pretrained(model_dir, num_labels=num_labels)
         model.eval()
 
         all_logits = []
@@ -81,8 +81,8 @@ class GoldEvaluator:
         try:
             with get_db() as db:
                 taxonomy = db.query(FeatureMaster).filter(FeatureMaster.is_active.is_(True)).all()
-            feature_keys = [t.feature_key for t in taxonomy]
-            feature_display_names = {t.feature_key: t.display_name for t in taxonomy}
+                feature_keys = [t.feature_key for t in taxonomy]
+                feature_display_names = {t.feature_key: t.display_name for t in taxonomy}
             sorted_feature_keys = [
                 k for k, _ in sorted(build_label_index(feature_keys).items(), key=lambda kv: kv[1])
             ]
@@ -95,13 +95,15 @@ class GoldEvaluator:
             with open(f"{category_model_dir}/aspect_category_meta.json") as f:
                 category_meta = json.load(f)
 
-            gold_cat_df = extract_gold_category_labels(test_df, feature_keys)
+            model_feature_keys = [k for k, _ in sorted(category_meta["label_index"].items(), key=lambda x: x[1])]
+
+            gold_cat_df = extract_gold_category_labels(test_df, model_feature_keys)
             cat_logits = self._run_category_model_inference(
-                gold_cat_df["review_text"].tolist(), category_model_dir, category_meta["max_length"]
+                gold_cat_df["review_text"].tolist(), category_model_dir, category_meta["max_length"], len(category_meta["label_index"])
             )
             gold_cat_labels = np.stack(gold_cat_df["gold_labels"].values)
             category_metrics = compute_metrics_from_logits(
-                cat_logits, gold_cat_labels, sorted_feature_keys, threshold=category_meta.get("threshold", 0.5)
+                cat_logits, gold_cat_labels, model_feature_keys, threshold=category_meta.get("threshold", 0.5)
             )
             results["category"] = category_metrics
             logging.info(f"GoldEvaluator: category model — f1_micro={category_metrics['f1_micro']:.3f}")
@@ -121,6 +123,7 @@ class GoldEvaluator:
                 gold_sent_df["text_b"].tolist(),
                 sentiment_model_dir,
                 sentiment_meta["max_length"],
+                len(sentiment_meta["sentiment_labels"])
             )
             sentiment_metrics = compute_sentiment_metrics(sent_logits, gold_sentiment_indices)
             results["sentiment"] = sentiment_metrics

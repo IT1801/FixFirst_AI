@@ -34,8 +34,8 @@ class HybridInferencePipeline:
 
             router = InferenceRouter(
                 taxonomy=taxonomy,
-                predict_category_probs_fn=predict_category_probs_fn,
-                predict_sentiment_probs_fn=predict_sentiment_probs_fn,
+                predict_category_probs_fn=predict_category_probs,
+                predict_sentiment_probs_fn=predict_sentiment_probs,
             )
 
             for i, row in enumerate(reviews_df.itertuples(index=False), start=1):

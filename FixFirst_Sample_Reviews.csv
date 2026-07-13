@@ -1,0 +1,16 @@
+review_id,review,expected_aspects,expected_sentiments,overall_priority,manager_verdict
+1,The latest update crashes every time I open the app.,Reliability,Negative,Critical,Prioritize crash fix immediately.
+2,The new UI looks clean and navigation is much easier.,Usability,Positive,Low,UI redesign is well received.
+3,Premium subscription is too expensive for the features offered.,Cost,Negative,High,Review pricing strategy.
+4,Login with Google keeps failing on my phone.,Security; Reliability,Negative; Negative,Critical,Investigate authentication issues.
+5,The app is very fast now after the latest update.,Efficiency,Positive,Low,Performance improvements are successful.
+6,Notifications arrive 20 minutes late.,Reliability,Negative,High,Fix notification delivery.
+7,Battery drains quickly whenever I use this app.,Efficiency,Negative,High,Optimize battery consumption.
+8,Dark mode looks fantastic.,Aesthetics,Positive,Low,No immediate action required.
+9,I love the new collaboration feature. It saves me a lot of time.,Effectiveness,Positive,Low,Feature is positively received.
+10,The app freezes whenever I upload a photo.,Reliability,Negative,Critical,Investigate upload pipeline.
+11,Permissions requested seem excessive and make me uncomfortable.,Security,Negative,High,Review privacy and permissions.
+12,Everything works perfectly after the update.,General,Positive,Low,Release appears stable.
+13,The search feature is accurate but loading is slow.,Effectiveness; Efficiency,Positive; Negative,Medium,Optimize search performance while preserving accuracy.
+14,Customer support responded within minutes and solved my issue.,General,Positive,Low,Support quality is excellent.
+15,"The app crashes, drains battery, and the subscription is overpriced.",Reliability; Efficiency; Cost,Negative; Negative; Negative,Critical,"Highest priority: reliability, battery optimization, and pricing."

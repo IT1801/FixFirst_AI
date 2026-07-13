@@ -34,12 +34,13 @@ def _load_category_model():
 
     try:
         model_dir = str(settings.resolve_path(settings.model_artifact_dir) / "aspect_category" / "final")
-        tokenizer = AutoTokenizer.from_pretrained(model_dir)
-        model = AutoModelForSequenceClassification.from_pretrained(model_dir)
-        model.eval()
-
+        
         with open(f"{model_dir}/aspect_category_meta.json") as f:
             meta = json.load(f)
+
+        tokenizer = AutoTokenizer.from_pretrained(model_dir)
+        model = AutoModelForSequenceClassification.from_pretrained(model_dir, num_labels=len(meta["label_index"]))
+        model.eval()
 
         _category_model_cache.update({"model": model, "tokenizer": tokenizer, "meta": meta})
         logging.info(f"_load_category_model: loaded model from {model_dir}")
@@ -56,12 +57,13 @@ def _load_sentiment_model():
 
     try:
         model_dir = str(settings.resolve_path(settings.model_artifact_dir) / "aspect_sentiment" / "final")
-        tokenizer = AutoTokenizer.from_pretrained(model_dir)
-        model = AutoModelForSequenceClassification.from_pretrained(model_dir)
-        model.eval()
-
+        
         with open(f"{model_dir}/aspect_sentiment_meta.json") as f:
             meta = json.load(f)
+
+        tokenizer = AutoTokenizer.from_pretrained(model_dir)
+        model = AutoModelForSequenceClassification.from_pretrained(model_dir, num_labels=len(meta["sentiment_labels"]))
+        model.eval()
 
         _sentiment_model_cache.update({"model": model, "tokenizer": tokenizer, "meta": meta})
         logging.info(f"_load_sentiment_model: loaded model from {model_dir}")

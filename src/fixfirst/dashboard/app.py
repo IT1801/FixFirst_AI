@@ -1,189 +1,144 @@
-"""FixFirst AI dashboard rendered with Streamlit."""
-
 import sys
-
-sys.path.insert(0, "src")
+from pathlib import Path
+import io
 
 import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
 
-from fixfirst.dashboard import api_client
-from fixfirst.exceptions.exception import FixFirstException
+# Ensure we can import from src
+src_path = str(Path(__file__).resolve().parents[3])
+if src_path not in sys.path:
+    sys.path.insert(0, src_path)
 
-st.set_page_config(page_title="FixFirst AI", page_icon="🛠️", layout="wide")
+from fixfirst.dashboard.services import inference_service, analysis_service
+from fixfirst.dashboard.components import charts
 
+st.set_page_config(page_title="FixFirst AI - Home", page_icon="🚀", layout="wide")
 
-def render_sidebar() -> str:
-    """Render the dashboard sidebar and return the selected view."""
-    try:
-        st.sidebar.title("🛠️ FixFirst AI")
-        st.sidebar.caption("Automated feature prioritization from user reviews")
+st.sidebar.title("🛠️ FixFirst AI")
+st.sidebar.caption("Automated Feature Prioritization")
 
-        healthy = api_client.check_api_health()
-        if healthy:
-            st.sidebar.success("API: connected")
-        else:
-            st.sidebar.error(f"API unreachable at {api_client.settings.dashboard_api_base_url}")
+st.title("🚀 FixFirst AI")
+st.subheader("Automated Feature Prioritization from Mobile App Reviews using Aspect-Based Sentiment Analysis")
 
-        return st.sidebar.radio("View", ["Overview", "Trends", "Reviews"])
-    except FixFirstException:
-        raise
-    except Exception as exc:
-        raise FixFirstException(exc, sys) from exc
+st.markdown("---")
 
+# Session state initialization
+if "aspects_df" not in st.session_state:
+    st.session_state.aspects_df = pd.DataFrame()
+if "priority_df" not in st.session_state:
+    st.session_state.priority_df = pd.DataFrame()
+if "summary_kpis" not in st.session_state:
+    st.session_state.summary_kpis = {}
 
-def render_score_table(rows: list, empty_message: str) -> None:
-    """Render a formatted criticality table."""
-    try:
-        if not rows:
-            st.info(empty_message)
-            return
+st.header("1. Submit Reviews")
+input_method = st.radio("Choose Input Method:", ["Text Area", "CSV Upload"], horizontal=True)
 
-        df = pd.DataFrame(rows)
-        df["score"] = df["score"].round(3)
-        df["negative_ratio"] = (df["negative_ratio"] * 100).round(1).astype(str) + "%"
-        df["trend_delta"] = df["trend_delta"].apply(lambda delta: f"{delta:+.3f}" if pd.notna(delta) else "—")
+reviews_df = pd.DataFrame()
 
-        display_df = df.rename(
-            columns={
-                "display_name": "Feature",
-                "score": "Criticality Score",
-                "mention_count": "Mentions",
-                "negative_ratio": "% Negative",
-                "trend_delta": "Trend Δ",
-                "window_start": "Window Start",
-                "window_end": "Window End",
-            }
-        )[["Feature", "Criticality Score", "Mentions", "% Negative", "Trend Δ", "Window Start", "Window End"]]
+if input_method == "Text Area":
+    text_input = st.text_area("Paste one review per line:", placeholder="The app crashes after every update.\nThe UI looks beautiful.\nPremium subscription is too expensive.\nNotifications arrive very late.", height=150)
+    if text_input:
+        reviews = [r.strip() for r in text_input.split('\n') if r.strip()]
+        reviews_df = pd.DataFrame({"review": reviews})
+else:
+    uploaded_file = st.file_uploader("Upload CSV (must contain a 'review' column)", type=["csv"])
+    if uploaded_file is not None:
+        try:
+            # We can use pd.read_csv to read the uploaded bytes
+            reviews_df = pd.read_csv(uploaded_file)
+            if "review" not in reviews_df.columns:
+                st.error("CSV must contain a column named 'review'")
+                reviews_df = pd.DataFrame()
+        except Exception as e:
+            st.error(f"Error reading CSV: {e}")
 
-        st.dataframe(display_df, use_container_width=True, hide_index=True)
-    except FixFirstException:
-        raise
-    except Exception as exc:
-        raise FixFirstException(exc, sys) from exc
+if st.button("Analyze Reviews", type="primary"):
+    if reviews_df.empty:
+        st.warning("Please provide some reviews to analyze.")
+    else:
+        with st.container():
+            status_text = st.empty()
+            progress_bar = st.progress(0)
+            
+            with st.spinner("Initializing models..."):
+                # Run inference
+                aspects_df = inference_service.run_dashboard_inference(reviews_df, progress_bar, status_text)
+                
+                # Compute priorities and summary
+                priority_df = analysis_service.compute_feature_priorities(aspects_df)
+                summary = analysis_service.summarize_results(aspects_df, priority_df)
+                
+                st.session_state.aspects_df = aspects_df
+                st.session_state.priority_df = priority_df
+                st.session_state.summary_kpis = summary
+                
+            progress_bar.empty()
+            status_text.empty()
+            st.success(f"Successfully processed {len(reviews_df)} reviews.")
 
+st.markdown("---")
 
-def render_overview() -> None:
-    """Render the overview page."""
-    try:
-        st.header("Overview")
-        st.caption("Each feature's most recent scoring window. See the Trends tab for history.")
-
-        high_priority = api_client.get_criticality_scores(priority="high", limit=20)
-        low_priority = api_client.get_criticality_scores(priority="low", limit=20)
-
-        col1, col2 = st.columns(2)
-        with col1:
-            st.subheader("🔴 High Priority — Needs Work")
-            render_score_table(high_priority, "No scored features yet — run the scoring pipeline first.")
-        with col2:
-            st.subheader("🟢 Low Priority — Backlog / Stable")
-            render_score_table(low_priority, "No scored features yet — run the scoring pipeline first.")
-    except FixFirstException as exc:
-        st.error(f"Failed to load criticality scores: {exc}")
-    except Exception as exc:
-        st.error(f"Failed to render overview: {exc}")
-
-
-def render_trends() -> None:
-    """Render the feature trend page."""
-    try:
-        st.header("Trends")
-        features = api_client.get_features()
-
-        if not features:
-            st.info("No features found — check that features_master is seeded.")
-            return
-
-        options = {feature["display_name"]: feature["feature_key"] for feature in features}
-        selected_display = st.selectbox("Feature", list(options.keys()))
-        feature_key = options[selected_display]
-
-        trend = api_client.get_feature_trend(feature_key)
-        if trend is None or not trend["points"]:
-            st.info(f"No scoring history yet for {selected_display}.")
-            return
-
-        points_df = pd.DataFrame(trend["points"])
-        points_df["window_start"] = pd.to_datetime(points_df["window_start"])
-
-        fig = go.Figure()
-        fig.add_trace(
-            go.Scatter(
-                x=points_df["window_start"],
-                y=points_df["score"],
-                mode="lines+markers",
-                name="Criticality Score",
-                line=dict(color="#d62728"),
-            )
-        )
-        fig.update_layout(
-            title=f"Criticality Score Over Time — {selected_display}",
-            xaxis_title="Window",
-            yaxis_title="Score",
-            height=450,
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
-        st.caption("Mention volume per window")
-        fig2 = go.Figure(go.Bar(x=points_df["window_start"], y=points_df["mention_count"], marker_color="#1f77b4"))
-        fig2.update_layout(height=250, xaxis_title="Window", yaxis_title="Mentions")
-        st.plotly_chart(fig2, use_container_width=True)
-    except FixFirstException as exc:
-        st.error(f"Failed to load trend data: {exc}")
-    except Exception as exc:
-        st.error(f"Failed to render trends: {exc}")
-
-
-def render_reviews() -> None:
-    """Render the review browser page."""
-    try:
-        st.header("Reviews")
-        features = api_client.get_features()
-
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            feature_options = ["All"] + [feature["display_name"] for feature in features]
-            selected_feature_display = st.selectbox("Feature", feature_options)
-        with col2:
-            selected_sentiment = st.selectbox("Sentiment", ["All", "negative", "neutral", "positive"])
-        with col3:
-            selected_source = st.selectbox("Source", ["All", "aware", "google_play", "app_store", "github_issues"])
-
-        feature_key = None
-        if selected_feature_display != "All":
-            feature_key = next(feature["feature_key"] for feature in features if feature["display_name"] == selected_feature_display)
-        sentiment = None if selected_sentiment == "All" else selected_sentiment
-        source = None if selected_source == "All" else selected_source
-
-        result = api_client.get_reviews(feature_key=feature_key, sentiment=sentiment, source=source, limit=25)
-
-        st.caption(f"{result['total']} matching reviews (showing up to {result['limit']})")
-
-        for review in result["items"]:
-            with st.container(border=True):
-                st.write(review["review_text"])
-                tag_cols = st.columns(max(len(review["aspects"]), 1))
-                for index, aspect in enumerate(review["aspects"]):
-                    color = {"negative": "red", "neutral": "gray", "positive": "green"}.get(aspect["sentiment"], "gray")
-                    tag_cols[index].markdown(f":{color}[{aspect['feature_key']}: {aspect['sentiment']}]")
-    except FixFirstException as exc:
-        st.error(f"Failed to load reviews: {exc}")
-    except Exception as exc:
-        st.error(f"Failed to render reviews: {exc}")
-
-
-def main() -> None:
-    """Run the dashboard application."""
-    view = render_sidebar()
-    if view == "Overview":
-        render_overview()
-    elif view == "Trends":
-        render_trends()
-    elif view == "Reviews":
-        render_reviews()
-
-
-if __name__ == "__main__":
-    main()
+if not st.session_state.aspects_df.empty:
+    st.header("2. Results Summary")
+    
+    kpi = st.session_state.summary_kpis
+    
+    cols = st.columns(5)
+    cols[0].metric("Reviews Processed", len(st.session_state.aspects_df["Original Review"].unique()))
+    cols[1].metric("Total Aspects Detected", kpi.get("total_aspects", 0))
+    cols[2].metric("Positive %", f"{kpi.get('positive_pct', 0):.1f}%")
+    cols[3].metric("Negative %", f"{kpi.get('negative_pct', 0):.1f}%")
+    cols[4].metric("Avg Aspects / Review", f"{kpi.get('average_aspects', 0):.1f}")
+    
+    st.markdown("---")
+    
+    st.header("3. Product Manager Summary")
+    st.info(kpi.get("summary_text", ""))
+    
+    st.markdown("---")
+    
+    st.header("4. Feature Prioritization Table")
+    st.dataframe(
+        st.session_state.priority_df,
+        use_container_width=True,
+        hide_index=True
+    )
+    
+    st.markdown("---")
+    
+    st.header("5. Visual Analytics")
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        charts.render_feature_distribution(st.session_state.priority_df)
+    with c2:
+        charts.render_sentiment_distribution(st.session_state.aspects_df)
+    with c3:
+        charts.render_priority_chart(st.session_state.priority_df)
+        
+    st.markdown("---")
+    
+    st.header("6. Review Explorer")
+    st.caption("Select a row in the table below to see more details.")
+    
+    event = st.dataframe(
+        st.session_state.aspects_df,
+        use_container_width=True,
+        hide_index=True,
+        selection_mode="single-row",
+        on_select="rerun"
+    )
+    
+    selected_rows = event.selection.rows
+    if selected_rows:
+        row_idx = selected_rows[0]
+        row_data = st.session_state.aspects_df.iloc[row_idx]
+        
+        st.subheader("Review Details")
+        with st.container(border=True):
+            st.markdown(f"**Original Review:**\n> {row_data['Original Review']}")
+            st.markdown(f"**Detected Aspect:** {row_data['Detected Aspect']}")
+            
+            color = {"negative": "red", "neutral": "gray", "positive": "green"}.get(row_data["Sentiment"], "gray")
+            st.markdown(f"**Predicted Sentiment:** :{color}[{row_data['Sentiment']}]")
+            st.markdown(f"**Prediction Confidence:** {row_data['Confidence']:.3f}")
