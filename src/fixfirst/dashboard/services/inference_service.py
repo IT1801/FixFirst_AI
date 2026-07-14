@@ -1,18 +1,21 @@
 """Service for running in-memory ML inference for the dashboard."""
 
 import pandas as pd
-import streamlit as st
+import functools
 from fixfirst.ml._inference.router import InferenceRouter
 from fixfirst.ml._inference.model_inference import predict_category_probs, predict_sentiment_probs
 from fixfirst.constants import SOURCE_FINETUNED
 from fixfirst.dashboard import api_client
 
-@st.cache_resource
+@functools.lru_cache(maxsize=1)
 def get_inference_router():
-    """Load the router and models once and cache them in Streamlit."""
+    """Load the router and models once and cache them."""
     # We fetch taxonomy from the API to keep it decoupled from DB directly if possible,
-    # or just use the local models since we are running in the same environment.
-    features = api_client.get_features(active_only=True)
+    try:
+        features = api_client.get_features(active_only=True)
+    except api_client.ApiUnavailableError:
+        features = None
+        
     if not features:
         # Fallback if API is down
         features = [{"feature_key": "general", "display_name": "General"}]
@@ -46,11 +49,10 @@ def _mock_route_review(text: str, feature_map: dict) -> list:
         
     return results
 
-def run_dashboard_inference(reviews_df: pd.DataFrame, progress_bar, status_text) -> pd.DataFrame:
+def run_dashboard_inference(reviews_df: pd.DataFrame) -> pd.DataFrame:
     """Run inference over a DataFrame of reviews, yielding a new DataFrame of aspects."""
     router = get_inference_router()
     
-    total = len(reviews_df)
     results = []
     
     for i, row in enumerate(reviews_df.itertuples(index=False), start=1):
@@ -75,9 +77,4 @@ def run_dashboard_inference(reviews_df: pd.DataFrame, progress_bar, status_text)
                 "Confidence": aspect["confidence"],
             })
             
-        # Update progress UI
-        progress = i / total
-        progress_bar.progress(progress)
-        status_text.text(f"Running Aspect Detection... {int(progress * 100)}%")
-        
     return pd.DataFrame(results)

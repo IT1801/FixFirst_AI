@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FixFirst AI - Home</title>
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Plotly.js -->
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <div class="main-content">
+        <header class="header">
+            <h1>🚀 FixFirst AI</h1>
+            <h2>Automated Feature Prioritization from Mobile App Reviews using Aspect-Based Sentiment Analysis</h2>
+        </header>
+        
+        <div class="card fade-in">
+            <h3>1. Submit Reviews</h3>
+            <form method="POST" action="/" enctype="multipart/form-data" id="review-form">
+                <div class="input-toggle">
+                    <label>
+                        <input type="radio" name="input_method" value="text" checked onclick="toggleInput('text')">
+                        Text Area
+                    </label>
+                    <label>
+                        <input type="radio" name="input_method" value="csv" onclick="toggleInput('csv')">
+                        CSV Upload
+                    </label>
+                </div>
+
+                <div id="text-input-section" class="input-section">
+                    <textarea name="text_input" placeholder="The app crashes after every update.&#10;The UI looks beautiful.&#10;Premium subscription is too expensive.&#10;Notifications arrive very late."></textarea>
+                </div>
+
+                <div id="csv-input-section" class="input-section" style="display:none;">
+                    <p class="help-text">Upload CSV (must contain a 'review' column)</p>
+                    <input type="file" name="csv_upload" accept=".csv">
+                </div>
+
+                <div class="form-actions" style="display: flex; gap: 1rem; align-items: center;">
+                    <button type="submit" class="btn-primary" onclick="showLoading()">Analyze Reviews</button>
+                    {% if summary %}
+                    <a href="/" class="btn-secondary" style="text-decoration: none; color: var(--text-primary); border: 1px solid var(--border-color); padding: 0.75rem 1.5rem; border-radius: 6px; font-weight: 500; transition: background-color 0.2s;">Start Over</a>
+                    {% endif %}
+                </div>
+            </form>
+            
+            {% if error %}
+            <div class="alert alert-error">{{ error }}</div>
+            {% endif %}
+        </div>
+
+        <!-- Loading Overlay -->
+        <div id="loading-overlay" class="loading-overlay">
+            <div class="spinner"></div>
+            <p>Initializing models and running inference...</p>
+        </div>
+
+        {% if summary %}
+        <div class="card slide-up">
+            <h3>2. Results Summary</h3>
+            <div class="kpi-grid">
+                <div class="kpi-box">
+                    <div class="kpi-label">Reviews Processed</div>
+                    <div class="kpi-value">{{ num_reviews }}</div>
+                </div>
+                <div class="kpi-box">
+                    <div class="kpi-label">Total Aspects Detected</div>
+                    <div class="kpi-value">{{ summary.total_aspects }}</div>
+                </div>
+                <div class="kpi-box">
+                    <div class="kpi-label">Positive %</div>
+                    <div class="kpi-value">{{ "%.1f"|format(summary.positive_pct) }}%</div>
+                </div>
+                <div class="kpi-box">
+                    <div class="kpi-label">Negative %</div>
+                    <div class="kpi-value">{{ "%.1f"|format(summary.negative_pct) }}%</div>
+                </div>
+                <div class="kpi-box">
+                    <div class="kpi-label">Avg Aspects / Review</div>
+                    <div class="kpi-value">{{ "%.1f"|format(summary.average_aspects) }}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card slide-up" style="animation-delay: 0.1s;">
+            <h3>3. Product Manager Summary</h3>
+            <div class="info-box">
+                {{ summary.summary_text | safe }}
+            </div>
+        </div>
+
+        <div class="card slide-up" style="animation-delay: 0.2s;">
+            <h3>4. Feature Prioritization Table</h3>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Feature</th>
+                            <th>Mentions</th>
+                            <th>Positive</th>
+                            <th>Negative</th>
+                            <th>Priority</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in priorities %}
+                        <tr>
+                            <td>{{ row.Feature }}</td>
+                            <td>{{ row.Mentions }}</td>
+                            <td>{{ row.Positive }}</td>
+                            <td>{{ row.Negative }}</td>
+                            <td>{{ row.Priority }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card slide-up" style="animation-delay: 0.3s;">
+            <h3>5. Visual Analytics</h3>
+            <div class="charts-grid">
+                <div id="chart-feature-dist" class="chart-container"></div>
+                <div id="chart-sentiment-dist" class="chart-container"></div>
+                <div id="chart-priority" class="chart-container"></div>
+            </div>
+        </div>
+
+        <div class="card slide-up" style="animation-delay: 0.4s;">
+            <h3>6. Review Explorer</h3>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Original Review</th>
+                            <th>Detected Aspect</th>
+                            <th>Sentiment</th>
+                            <th>Confidence</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in aspects %}
+                        <tr>
+                            <td>{{ row['Original Review'] }}</td>
+                            <td>{{ row['Detected Aspect'] }}</td>
+                            <td>
+                                <span class="badge badge-{{ row['Sentiment'] }}">
+                                    {{ row['Sentiment'] }}
+                                </span>
+                            </td>
+                            <td>{{ "%.3f"|format(row['Confidence']) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <script>
+        function toggleInput(method) {
+            if (method === 'text') {
+                document.getElementById('text-input-section').style.display = 'block';
+                document.getElementById('csv-input-section').style.display = 'none';
+            } else {
+                document.getElementById('text-input-section').style.display = 'none';
+                document.getElementById('csv-input-section').style.display = 'block';
+            }
+        }
+
+        function showLoading() {
+            document.getElementById('loading-overlay').style.display = 'flex';
+        }
+
+        // Render Plotly charts if data exists
+        {% if feature_dist_json %}
+        var featureData = {{ feature_dist_json | safe }};
+        if(featureData) Plotly.newPlot('chart-feature-dist', featureData.data, featureData.layout, {responsive: true});
+        {% endif %}
+
+        {% if sentiment_dist_json %}
+        var sentimentData = {{ sentiment_dist_json | safe }};
+        if(sentimentData) Plotly.newPlot('chart-sentiment-dist', sentimentData.data, sentimentData.layout, {responsive: true});
+        {% endif %}
+
+        {% if priority_chart_json %}
+        var priorityData = {{ priority_chart_json | safe }};
+        if(priorityData) Plotly.newPlot('chart-priority', priorityData.data, priorityData.layout, {responsive: true});
+        {% endif %}
+    </script>
+</body>
+</html>

@@ -131,7 +131,7 @@ api: ## Run the FastAPI server locally with hot reload
 
 .PHONY: dashboard
 dashboard: ## Run the Streamlit dashboard locally
-	$(SRC_ENV) streamlit run src/fixfirst/dashboard/app.py
+	$(SRC_ENV) flask --app src/fixfirst/dashboard/app.py run --port 8501 --debug
 
 # --- Housekeeping ---------------------------------------------------------
 

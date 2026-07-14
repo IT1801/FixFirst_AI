@@ -6,7 +6,10 @@ SQLAlchemy
 psycopg2-binary
 fastapi
 uvicorn
-streamlit
+tqdm==4.66.5
+flask>=3.0.0
+werkzeug>=3.0.0
+python-multipart==0.0.9
 plotly
 requests
 groq

@@ -3,13 +3,12 @@
 import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
-import streamlit as st
+import json
 
-def render_feature_distribution(priority_df: pd.DataFrame):
+def render_feature_distribution(priority_df: pd.DataFrame) -> str:
     """Horizontal bar chart for feature mentions."""
     if priority_df.empty:
-        st.info("No data for feature distribution.")
-        return
+        return ""
         
     df = priority_df.sort_values(by="Mentions", ascending=True)
     fig = px.bar(
@@ -22,13 +21,12 @@ def render_feature_distribution(priority_df: pd.DataFrame):
         color_continuous_scale=px.colors.sequential.Blues
     )
     fig.update_layout(showlegend=False, margin=dict(l=0, r=0, t=40, b=0), height=350)
-    st.plotly_chart(fig, use_container_width=True)
+    return fig.to_json()
 
-def render_sentiment_distribution(aspects_df: pd.DataFrame):
+def render_sentiment_distribution(aspects_df: pd.DataFrame) -> str:
     """Donut chart for sentiment distribution."""
     if aspects_df.empty:
-        st.info("No data for sentiment distribution.")
-        return
+        return ""
         
     counts = aspects_df["Sentiment"].value_counts().reset_index()
     counts.columns = ["Sentiment", "Count"]
@@ -45,13 +43,12 @@ def render_sentiment_distribution(aspects_df: pd.DataFrame):
         color_discrete_map=color_map
     )
     fig.update_layout(margin=dict(l=0, r=0, t=40, b=0), height=350)
-    st.plotly_chart(fig, use_container_width=True)
+    return fig.to_json()
 
-def render_priority_chart(priority_df: pd.DataFrame):
+def render_priority_chart(priority_df: pd.DataFrame) -> str:
     """Bar chart for top negative features."""
     if priority_df.empty or priority_df["Negative"].sum() == 0:
-        st.info("No negative mentions to prioritize.")
-        return
+        return ""
         
     df = priority_df[priority_df["Negative"] > 0].sort_values(by="Negative", ascending=False).head(10)
     
@@ -64,4 +61,4 @@ def render_priority_chart(priority_df: pd.DataFrame):
         color_continuous_scale=px.colors.sequential.Reds
     )
     fig.update_layout(showlegend=False, margin=dict(l=0, r=0, t=40, b=0), height=350)
-    st.plotly_chart(fig, use_container_width=True)
+    return fig.to_json()
